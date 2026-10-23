@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { MessageSquare, Send, AlertCircle, ChevronLeft, Paperclip, X, Zap, CheckCheck } from 'lucide-react';
+import { MessageSquare, Send, AlertCircle, ChevronLeft, Paperclip, X, Zap, CheckCheck, FileText } from 'lucide-react';
 import { API_URL } from '@/lib/config';
 import Linkify from '@/components/ui/Linkify';
 import MessageStatusTicks from '@/components/inbox/MessageStatusTicks';
@@ -67,6 +67,7 @@ export default function MessageThread({ conversationId, conversation, newMessage
   const [attachmentError, setAttachmentError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isWindowClosed, setIsWindowClosed] = useState(false);
+  const [isTemplateMode, setIsTemplateMode] = useState(false);
   const [timeRemainingLabel, setTimeRemainingLabel] = useState<string | null>(null);
   const [quickReplies, setQuickReplies] = useState<{ id: string, shortcut: string, message: string }[]>([]);
   const [templates, setTemplates] = useState<{ id: string, template_name: string, body?: string }[]>([]);
@@ -322,6 +323,7 @@ export default function MessageThread({ conversationId, conversation, newMessage
         const body = await res.json();
         forceScrollRef.current = true;
         setMessages(prev => prev.find(m => m.id === body.data.id) ? prev : [...prev, body.data]);
+        setIsTemplateMode(false);
       } else {
         const body = await res.json().catch(() => null);
         setSendError(body?.message || 'Failed to send template.');
@@ -544,18 +546,30 @@ export default function MessageThread({ conversationId, conversation, newMessage
           <div className={`flex-1 flex items-end bg-[var(--color-bg-base)] border border-[var(--color-border-subtle)] rounded-3xl overflow-hidden focus-within:ring-2 focus-within:ring-emerald-100 focus-within:border-emerald-400 transition-all shadow-sm min-w-0 ${isNoteMode ? 'bg-yellow-50 border-yellow-200 focus-within:border-yellow-400 focus-within:ring-yellow-100' : ''}`}>
 
             <button
-              onClick={() => setIsNoteMode(!isNoteMode)}
+              onClick={() => {
+                if (!isNoteMode) setIsTemplateMode(false);
+                setIsNoteMode(!isNoteMode);
+              }}
               className={`p-2.5 sm:p-3 shrink-0 transition-colors ${isNoteMode ? 'text-yellow-600 hover:bg-yellow-100' : 'text-[var(--color-text-secondary)] hover:bg-gray-100'}`}
               title="Toggle Internal Note"
             >
               <AlertCircle size={20} className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
 
-            {isWindowClosed && !isNoteMode ? (
+            {((isWindowClosed || isTemplateMode) && !isNoteMode) ? (
               <div className="flex-1 min-w-0 flex flex-col gap-2 p-2 bg-[var(--color-bg-base)]">
                 <div className="flex items-center gap-2 overflow-hidden">
-                  <AlertCircle size={16} className="text-red-400 shrink-0 hidden sm:block" />
-                  <span className="truncate text-xs sm:text-sm text-[var(--color-text-secondary)] shrink-0">Closed:</span>
+                  {isWindowClosed ? (
+                    <>
+                      <AlertCircle size={16} className="text-red-400 shrink-0 hidden sm:block" />
+                      <span className="truncate text-xs sm:text-sm text-[var(--color-text-secondary)] shrink-0">Closed:</span>
+                    </>
+                  ) : (
+                    <>
+                      <FileText size={16} className="text-emerald-600 shrink-0 hidden sm:block" />
+                      <span className="truncate text-xs sm:text-sm font-medium text-emerald-700 shrink-0">Template:</span>
+                    </>
+                  )}
                   <select
                     className="bg-[var(--color-bg-surface)] border border-[var(--color-border-subtle)] rounded px-1.5 py-1 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full min-w-0 flex-1 truncate"
                     value={selectedTemplate}
@@ -568,6 +582,16 @@ export default function MessageThread({ conversationId, conversation, newMessage
                       templates.map((t) => <option key={t.id} value={t.template_name}>{t.template_name}</option>)
                     )}
                   </select>
+                  {isTemplateMode && !isWindowClosed && (
+                    <button
+                      type="button"
+                      onClick={() => setIsTemplateMode(false)}
+                      className="p-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-gray-100 rounded transition-colors shrink-0"
+                      title="Cancel template mode"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
                 </div>
                 {templateParameters.length > 0 && (
                   <div className="flex flex-col gap-1.5 px-2 pb-1">
@@ -612,11 +636,24 @@ export default function MessageThread({ conversationId, conversation, newMessage
               />
             )}
 
+            {!isNoteMode && !isWindowClosed && (
+              <button
+                type="button"
+                onClick={() => setIsTemplateMode(!isTemplateMode)}
+                className={`p-2.5 sm:p-3 shrink-0 transition-colors ${isTemplateMode ? 'text-emerald-600 hover:bg-emerald-50' : 'text-[var(--color-text-secondary)] hover:bg-gray-100 hover:text-[var(--color-text-primary)]'}`}
+                title={isTemplateMode ? "Switch to Text Message" : "Choose Template"}
+                aria-label={isTemplateMode ? "Switch to Text Message" : "Choose Template"}
+              >
+                <FileText size={20} className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+            )}
+
             {!isNoteMode && (
               <button
+                type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={isWindowClosed}
-                className={`p-2.5 sm:p-3 shrink-0 transition-colors ${isWindowClosed ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text-secondary)] hover:bg-gray-100 hover:text-[var(--color-text-primary)]'}`}
+                disabled={isWindowClosed || isTemplateMode}
+                className={`p-2.5 sm:p-3 shrink-0 transition-colors ${isWindowClosed || isTemplateMode ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text-secondary)] hover:bg-gray-100 hover:text-[var(--color-text-primary)]'}`}
                 title="Attach File"
               >
                 <Paperclip size={20} className="w-5 h-5 sm:w-6 sm:h-6" />
@@ -625,10 +662,14 @@ export default function MessageThread({ conversationId, conversation, newMessage
           </div>
 
           <button
-            onClick={isWindowClosed && !isNoteMode ? handleSendTemplate : handleSend}
-            disabled={((!inputText.trim() && !attachment) && !(isWindowClosed && !isNoteMode)) || isSending || (isWindowClosed && !isNoteMode && !selectedTemplate)}
-            title={isNoteMode ? 'Save note' : 'Send message'}
-            aria-label={isNoteMode ? 'Save note' : 'Send message'}
+            onClick={((isWindowClosed || isTemplateMode) && !isNoteMode) ? handleSendTemplate : handleSend}
+            disabled={
+              ((!inputText.trim() && !attachment) && !((isWindowClosed || isTemplateMode) && !isNoteMode)) || 
+              isSending || 
+              (((isWindowClosed || isTemplateMode) && !isNoteMode) && !selectedTemplate)
+            }
+            title={isNoteMode ? 'Save note' : ((isWindowClosed || isTemplateMode) && !isNoteMode) ? 'Send template' : 'Send message'}
+            aria-label={isNoteMode ? 'Save note' : ((isWindowClosed || isTemplateMode) && !isNoteMode) ? 'Send template' : 'Send message'}
             className={`p-2.5 sm:p-3 rounded-full text-white shrink-0 shadow-md transition-transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 ${isNoteMode ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-[var(--color-brand-primary)] hover:bg-[var(--color-brand-hover)]'}`}
           >
             <Send size={20} className="w-5 h-5 sm:w-6 sm:h-6 ml-0.5" />
