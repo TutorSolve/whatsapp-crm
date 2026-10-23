@@ -11,10 +11,14 @@ import type { CurrentUser } from '@/types/auth';
 import type { Conversation } from '@/types/inbox';
 
 function InboxContent({ currentUser }: { currentUser: CurrentUser }) {
-  const { conversations, setConversations, loadError, newMessage, messageStatusUpdate, isConnected, markAsRead, isLoading, isFetchingMore, hasMore, fetchNextPage } = useInbox();
+  const { conversations, setConversations, loadError, newMessage, messageStatusUpdate, isConnected, markAsRead, isLoading, isFetchingMore, hasMore, fetchNextPage, setActiveConversationId } = useInbox();
 
   const [activeChat, setActiveChat] = useState<string | null>(null);
   const [isNoteMode, setIsNoteMode] = useState(false);
+
+  useEffect(() => {
+    setActiveConversationId(activeChat);
+  }, [activeChat, setActiveConversationId]);
 
   // Resizable left pane (desktop only -- see isDesktop below)
   const [leftWidth, setLeftWidth] = useState(384); // Default 384px (w-96)

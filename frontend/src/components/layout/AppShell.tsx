@@ -3,10 +3,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Inbox, Users, LogOut, MessageSquare, Circle, BarChart3, Zap, ShieldAlert, Settings, FileText, Tag as TagIcon, Menu } from 'lucide-react';
+import { Inbox, Users, LogOut, MessageSquare, Circle, BarChart3, Zap, ShieldAlert, Settings, FileText, Tag as TagIcon, Menu, Volume2, VolumeX } from 'lucide-react';
 import type { CurrentUser } from '@/types/auth';
 import { useInbox } from '@/context/InboxContext';
 import { useAuth } from '@/context/AuthContext';
+import { notificationSound } from '@/utils/notificationSound';
 
 interface NavItem {
   href: string;
@@ -69,6 +70,19 @@ export default function AppShell({ children }: AppShellProps) {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showStatusMenu, showMobileMenu]);
+
+  const [isMuted, setIsMuted] = useState(() => notificationSound.isSoundMuted());
+
+  useEffect(() => {
+    const handleMuteChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ muted: boolean }>;
+      if (customEvent.detail) {
+        setIsMuted(customEvent.detail.muted);
+      }
+    };
+    window.addEventListener('crm-sound-mute-changed', handleMuteChange);
+    return () => window.removeEventListener('crm-sound-mute-changed', handleMuteChange);
+  }, []);
 
   const [businessOpen, setBusinessOpen] = useState<boolean | null>(null);
 
@@ -138,7 +152,24 @@ export default function AppShell({ children }: AppShellProps) {
             )}
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                const nextMuted = !isMuted;
+                setIsMuted(nextMuted);
+                notificationSound.setSoundMuted(nextMuted);
+              }}
+              className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors flex items-center justify-center"
+              title={isMuted ? 'Notification sounds muted (click to unmute)' : 'Notification sounds enabled (click to mute)'}
+              aria-label={isMuted ? 'Unmute notification sounds' : 'Mute notification sounds'}
+            >
+              {isMuted ? (
+                <VolumeX size={18} className="text-gray-400" />
+              ) : (
+                <Volume2 size={18} className="text-emerald-600" />
+              )}
+            </button>
             <div className="text-sm font-medium text-gray-700 hidden sm:block">
               {user.full_name}
             </div>

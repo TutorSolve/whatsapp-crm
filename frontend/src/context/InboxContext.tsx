@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { API_URL } from '@/lib/config';
 import { useSocket } from '@/hooks/useSocket';
+import { notificationSound } from '@/utils/notificationSound';
 import type { Conversation, NewMessagePayload } from '@/types/inbox';
 
 export interface MessageStatusUpdatePayload {
@@ -24,6 +25,8 @@ interface InboxContextType {
   isFetchingMore: boolean;
   hasMore: boolean;
   fetchNextPage: () => Promise<void>;
+  activeConversationId: string | null;
+  setActiveConversationId: (id: string | null) => void;
 }
 
 const InboxContext = createContext<InboxContextType | undefined>(undefined);
@@ -33,11 +36,17 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
   const [loadError, setLoadError] = useState('');
   const [newMessage, setNewMessage] = useState<NewMessagePayload | null>(null);
   const [messageStatusUpdate, setMessageStatusUpdate] = useState<MessageStatusUpdatePayload | null>(null);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const activeConversationIdRef = useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [totalUnreadCount, setTotalUnreadCount] = useState(0);
   const isFetchingRef = useRef(false);
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
 
   const { on, off, isConnected } = useSocket();
 
@@ -116,6 +125,12 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
       const { conversation_id, message } = payload;
       setNewMessage(payload);
 
+      // Play chime strictly for inbound customer messages (NEVER for AGENT/SYSTEM/greetings/outbound)
+      if (message.sender_type === 'CUSTOMER') {
+        const isSame = activeConversationIdRef.current === conversation_id;
+        notificationSound.play({ isSameConversation: isSame });
+      }
+
       setConversations((prev: Conversation[]) => {
         const convExists = prev.find((c) => c.id === conversation_id);
         if (convExists) {
@@ -191,7 +206,9 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
       isLoading,
       isFetchingMore,
       hasMore,
-      fetchNextPage
+      fetchNextPage,
+      activeConversationId,
+      setActiveConversationId
     }}>
       {children}
     </InboxContext.Provider>
