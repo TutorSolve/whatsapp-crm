@@ -22,6 +22,7 @@ const nextConfig: NextConfig = {
       // REST API
       { source: "/api/:path*",    destination: `${backendUrl}/api/:path*` },
       // Socket.IO (HTTP polling + WebSocket upgrade)
+      { source: "/socket.io",        destination: `${backendUrl}/socket.io/` },
       { source: "/socket.io/:path*", destination: `${backendUrl}/socket.io/:path*` },
       // Meta webhook (inbound messages from Meta)
       { source: "/webhook",       destination: `${backendUrl}/webhook` },

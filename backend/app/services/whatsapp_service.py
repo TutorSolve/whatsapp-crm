@@ -192,6 +192,20 @@ class WhatsAppService:
 
         messages_ref = db.client.collection("messages")
         if meta_message_id:
+            # Atomic lock via Firestore document creation: prevents duplicate concurrent processing
+            lock_ref = db.client.collection("processed_webhooks").document(meta_message_id)
+            if hasattr(lock_ref, "create"):
+                try:
+                    lock_ref.create({"processed_at": datetime.now(timezone.utc)})
+                except Exception:
+                    logger.info("Ignoring duplicate webhook for meta_message_id %s", meta_message_id)
+                    return
+            else:
+                # Fallback for mock environments (e.g. mockfirestore)
+                if lock_ref.get().exists:
+                    return
+                lock_ref.set({"processed_at": datetime.now(timezone.utc)})
+
             existing = list(messages_ref.where("meta_message_id", "==", meta_message_id).limit(1).stream())
             if existing:
                 return

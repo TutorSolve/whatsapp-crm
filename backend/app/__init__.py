@@ -4,6 +4,16 @@ from flask import Flask, jsonify
 from app.db.firebase import db
 from flask_cors import CORS
 
+class SocketIOPrefixMiddleware:
+    """Ensures /socket.io without trailing slash is routed to SocketIO / EngineIO."""
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        if environ.get('PATH_INFO') == '/socket.io':
+            environ['PATH_INFO'] = '/socket.io/'
+        return self.wsgi_app(environ, start_response)
+
 def create_app(test_config=None):
     # create and configure the app
     app = Flask(__name__, instance_relative_config=True)
@@ -42,6 +52,7 @@ def create_app(test_config=None):
     # Initialize SocketIO
     from app.core.socket_events import socketio
     socketio.init_app(app)
+    app.wsgi_app = SocketIOPrefixMiddleware(app.wsgi_app)
 
     # Register blueprints
     from app.api import auth, whatsapp, users, conversations, media, admin

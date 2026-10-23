@@ -1,6 +1,6 @@
 import logging
 from flask import Blueprint, request, Response, jsonify
-from app.core.config import WHATSAPP_VERIFY_TOKEN
+from app.core.config import WHATSAPP_VERIFY_TOKEN, WHATSAPP_BUSINESS_ACCOUNT_ID
 from app.schemas.whatsapp import WebhookPayloadSchema
 from marshmallow import ValidationError
 
@@ -43,6 +43,12 @@ def webhook():
         # 2. Extract data safely
         try:
             entry = data['entry'][0]
+            waba_id = entry.get('id')
+            if WHATSAPP_BUSINESS_ACCOUNT_ID and WHATSAPP_BUSINESS_ACCOUNT_ID != 'dummy_waba_id':
+                if waba_id and str(waba_id) != str(WHATSAPP_BUSINESS_ACCOUNT_ID):
+                    logger.info("Ignoring webhook for non-primary WABA %s", waba_id)
+                    return jsonify({"status": "ignored", "reason": "unmatched_waba"}), 200
+
             change = entry['changes'][0]
             value = change['value']
 
