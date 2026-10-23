@@ -104,35 +104,35 @@ class NotificationSoundManager {
       const ctx = this.initAudioContext();
       if (!ctx) return;
 
-      // Case 1 (background): 0.35 volume
-      // Case 2 (foreground, different chat): 0.28 volume
-      // Case 3 (foreground, same chat): 0.14 volume (gentle feedback)
-      const baseVolume = isBackground ? 0.35 : (isSame ? 0.14 : 0.28);
+      // Case 1 (background / other tab or window): 0.70 volume (rich, clearly audible across room/speakers)
+      // Case 2 (foreground, different chat): 0.50 volume
+      // Case 3 (foreground, same chat): 0.25 volume (gentle feedback)
+      const baseVolume = isBackground ? 0.70 : (isSame ? 0.25 : 0.50);
       const startTime = ctx.currentTime;
 
-      // Note 1: 784 Hz (G5 note, 120ms duration)
+      // Note 1: 784 Hz (G5 note, 140ms duration)
       const osc1 = ctx.createOscillator();
       const gain1 = ctx.createGain();
       osc1.type = 'sine';
       osc1.frequency.setValueAtTime(784, startTime);
       gain1.gain.setValueAtTime(baseVolume, startTime);
-      gain1.gain.exponentialRampToValueAtTime(0.001, startTime + 0.12);
+      gain1.gain.exponentialRampToValueAtTime(0.001, startTime + 0.14);
       osc1.connect(gain1);
       gain1.connect(ctx.destination);
       osc1.start(startTime);
-      osc1.stop(startTime + 0.12);
+      osc1.stop(startTime + 0.14);
 
-      // Note 2: 1046 Hz (C6 note, starts at 90ms, 250ms duration)
+      // Note 2: 1046 Hz (C6 note, starts at 100ms, 400ms duration with pleasant bell resonance)
       const osc2 = ctx.createOscillator();
       const gain2 = ctx.createGain();
       osc2.type = 'sine';
-      osc2.frequency.setValueAtTime(1046, startTime + 0.09);
-      gain2.gain.setValueAtTime(baseVolume * 1.1, startTime + 0.09);
-      gain2.gain.exponentialRampToValueAtTime(0.001, startTime + 0.34);
+      osc2.frequency.setValueAtTime(1046, startTime + 0.10);
+      gain2.gain.setValueAtTime(Math.min(1.0, baseVolume * 1.15), startTime + 0.10);
+      gain2.gain.exponentialRampToValueAtTime(0.001, startTime + 0.42);
       osc2.connect(gain2);
       gain2.connect(ctx.destination);
-      osc2.start(startTime + 0.09);
-      osc2.stop(startTime + 0.34);
+      osc2.start(startTime + 0.10);
+      osc2.stop(startTime + 0.42);
     } catch {
       // Audio playback fails gracefully if browser autoplay policy blocks it
     }
