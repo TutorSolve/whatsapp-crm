@@ -5,7 +5,7 @@ from app.db.firebase import db
 from app.models.customer import Customer
 from app.models.conversation import Conversation
 from app.models.message import Message
-from app.core.config import WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID
+from app.core.config import WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_BUSINESS_ACCOUNT_ID
 from app.core.security import encrypt_phone, decrypt_phone, hash_phone, generate_masked_id
 from datetime import datetime, timezone, timedelta
 
@@ -387,6 +387,8 @@ class WhatsAppService:
             "type": "text",
             "text": {"body": text}
         }
+        if WHATSAPP_BUSINESS_ACCOUNT_ID and WHATSAPP_BUSINESS_ACCOUNT_ID != "dummy_waba_id":
+            payload["messaging_account_id"] = WHATSAPP_BUSINESS_ACCOUNT_ID
 
         try:
             response = requests.post(url, headers=headers, json=payload, timeout=10)
@@ -506,6 +508,8 @@ class WhatsAppService:
             "type": msg_type,
             msg_type: media_payload
         }
+        if WHATSAPP_BUSINESS_ACCOUNT_ID and WHATSAPP_BUSINESS_ACCOUNT_ID != "dummy_waba_id":
+            payload["messaging_account_id"] = WHATSAPP_BUSINESS_ACCOUNT_ID
 
         try:
             send_resp = requests.post(send_url, headers=json_headers, json=payload, timeout=10)
@@ -592,6 +596,8 @@ class WhatsAppService:
                 }
             }
         }
+        if WHATSAPP_BUSINESS_ACCOUNT_ID and WHATSAPP_BUSINESS_ACCOUNT_ID != "dummy_waba_id":
+            payload["messaging_account_id"] = WHATSAPP_BUSINESS_ACCOUNT_ID
         
         if parameters:
             payload["template"]["components"] = [
