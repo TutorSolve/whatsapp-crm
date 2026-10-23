@@ -33,7 +33,7 @@ export function useSocket() {
 
     const socket = io(socketUrl, {
       withCredentials: true,
-      transports: ['websocket', 'polling'], // Fallback if necessary
+      transports: ['polling', 'websocket'], // Connect immediately via polling, then upgrade
     });
 
     socketRef.current = socket;

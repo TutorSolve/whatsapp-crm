@@ -7,6 +7,11 @@ const nextConfig: NextConfig = {
   // the full node_modules tree.
   output: "standalone",
 
+  // Disables Next.js's automatic 308 Permanent Redirect on paths with a trailing
+  // slash, allowing Socket.IO client handshakes (/socket.io/?...) to reach the proxy
+  // without breaking WebSocket handshakes or Engine.IO polling packets.
+  skipTrailingSlashRedirect: true,
+
   // Proxy all API and Socket.IO traffic through the Next.js server so that
   // every browser request is same-origin (frontend domain). This means:
   //   - Auth cookies are set/read on the frontend domain → no cross-site
@@ -20,12 +25,13 @@ const nextConfig: NextConfig = {
     const backendUrl = process.env.BACKEND_URL || "http://localhost:5000";
     return [
       // REST API
-      { source: "/api/:path*",    destination: `${backendUrl}/api/:path*` },
+      { source: "/api/:path*",       destination: `${backendUrl}/api/:path*` },
       // Socket.IO (HTTP polling + WebSocket upgrade)
       { source: "/socket.io",        destination: `${backendUrl}/socket.io/` },
+      { source: "/socket.io/",       destination: `${backendUrl}/socket.io/` },
       { source: "/socket.io/:path*", destination: `${backendUrl}/socket.io/:path*` },
       // Meta webhook (inbound messages from Meta)
-      { source: "/webhook",       destination: `${backendUrl}/webhook` },
+      { source: "/webhook",          destination: `${backendUrl}/webhook` },
     ];
   },
 };
