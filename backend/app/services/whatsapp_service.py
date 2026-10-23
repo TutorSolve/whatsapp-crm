@@ -605,20 +605,40 @@ class WhatsAppService:
             response = requests.post(url, headers=headers, json=payload, timeout=10)
             response.raise_for_status()
 
-            # Record the sent template as a message
+            # Resolve actual human body text from Firestore meta_templates
+            resolved_text = f"[Template: {template_name}]"
+            try:
+                tmpl_docs = list(db.client.collection("meta_templates")
+                                .where("template_name", "==", template_name)
+                                .limit(1).stream())
+                if tmpl_docs:
+                    raw_body = tmpl_docs[0].to_dict().get("body", "")
+                    if raw_body:
+                        resolved_text = raw_body
+                        if parameters:
+                            for idx, val in enumerate(parameters):
+                                resolved_text = resolved_text.replace(f"{{{{{idx + 1}}}}}", str(val))
+            except Exception:
+                logger.warning("Could not resolve body for template %s", template_name)
+
+            # Record the sent template with the actual message body
             outbound_msg = Message(
                 conversation_id=conversation_id,
                 sender_type="AGENT",
                 sender_id=sender_id,
                 message_type="TEMPLATE",
-                text_body=f"[Template Sent: {template_name}]",
+                text_body=resolved_text,
                 direction="OUTBOUND",
                 delivery_status="SENT"
             )
+            meta_msg_id = response.json().get("messages", [{}])[0].get("id")
+            if meta_msg_id:
+                outbound_msg.meta_message_id = meta_msg_id
+
             db.client.collection("messages").document(outbound_msg.id).set(outbound_msg.to_dict())
 
             now = datetime.now(timezone.utc)
-            preview = f"Template: {template_name}"
+            preview = resolved_text
             convs_ref.document(conversation_id).update({
                 "last_message_preview": preview,
                 "last_message_at": now
@@ -629,7 +649,7 @@ class WhatsAppService:
                 'conversation_id': conversation_id,
                 'message': {
                     'id': outbound_msg.id,
-                    'text_body': f"[Template Sent: {template_name}]",
+                    'text_body': resolved_text,
                     'direction': 'OUTBOUND',
                     'sender_type': 'AGENT',
                     'message_type': 'TEMPLATE',
