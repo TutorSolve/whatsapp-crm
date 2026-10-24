@@ -63,7 +63,7 @@ function TeamManagementContent() {
         throw new Error(errorMsg);
       }
 
-      setSuccess(`User ${formData.full_name} created successfully! An email has been sent.`);
+      setSuccess(`User ${formData.full_name} created successfully! An invitation email has been sent. Please ask them to check their inbox or spam folder.`);
       closeModal();
       invalidate();
       fetchUsers();

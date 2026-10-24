@@ -55,8 +55,9 @@ export default function ForgotPasswordPage() {
 
         {submitted ? (
           <div className="space-y-6">
-            <div className="p-3 text-sm text-[var(--color-text-primary)] bg-emerald-50 border border-emerald-200 rounded-md text-center">
-              If an account with that email exists, a reset link has been sent. Check your inbox.
+            <div className="p-3 text-sm text-[var(--color-text-primary)] bg-emerald-50 border border-emerald-200 rounded-md text-center space-y-1">
+              <p className="font-medium">If an account with that email exists, a reset link has been sent.</p>
+              <p className="text-xs text-[var(--color-text-secondary)]">Please check your inbox as well as your <strong>spam or junk folder</strong> if you don&apos;t see it within a few minutes.</p>
             </div>
             <Link
               href="/login"
