@@ -391,7 +391,19 @@ def send_template_message_endpoint(conversation_id):
         return jsonify({"status": "error", "message": "template_name is required"}), 400
 
     template_name = data.get('template_name')
-    language_code = data.get('language_code', 'en_US')
+    language_code = data.get('language_code')
+    if not language_code:
+        try:
+            tmpl_docs = list(db.client.collection("meta_templates")
+                            .where("template_name", "==", template_name)
+                            .limit(1).stream())
+            if tmpl_docs:
+                language_code = tmpl_docs[0].to_dict().get("language_code")
+        except Exception:
+            pass
+    if not language_code:
+        language_code = 'en_US'
+
     template_parameters = data.get('template_parameters', [])
 
     sender_id = g.current_user.get("id")

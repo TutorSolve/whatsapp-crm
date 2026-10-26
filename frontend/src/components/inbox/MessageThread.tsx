@@ -70,7 +70,7 @@ export default function MessageThread({ conversationId, conversation, newMessage
   const [isTemplateMode, setIsTemplateMode] = useState(false);
   const [timeRemainingLabel, setTimeRemainingLabel] = useState<string | null>(null);
   const [quickReplies, setQuickReplies] = useState<{ id: string, shortcut: string, message: string }[]>([]);
-  const [templates, setTemplates] = useState<{ id: string, template_name: string, body?: string }[]>([]);
+  const [templates, setTemplates] = useState<{ id: string, template_name: string, language_code?: string, body?: string }[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [templateParameters, setTemplateParameters] = useState<string[]>([]);
   const [maximizedImage, setMaximizedImage] = useState<string | null>(null);
@@ -309,12 +309,16 @@ export default function MessageThread({ conversationId, conversation, newMessage
     setSendError('');
 
     try {
+      const selectedTmpl = templates.find(t => t.template_name === selectedTemplate);
+      const language_code = selectedTmpl?.language_code || 'en_US';
+
       const res = await fetch(`${API_URL}/api/conversations/${conversationId}/messages/template`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           template_name: selectedTemplate,
+          language_code,
           template_parameters: templateParameters
         })
       });

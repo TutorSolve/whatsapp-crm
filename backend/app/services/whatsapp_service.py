@@ -593,6 +593,19 @@ class WhatsAppService:
         except ValueError as e:
             return False, str(e)
 
+        # If language_code is defaulted or unspecified, check meta_templates for the registered language
+        if not language_code or language_code == "en_US":
+            try:
+                tmpl_docs = list(db.client.collection("meta_templates")
+                                .where("template_name", "==", template_name)
+                                .limit(1).stream())
+                if tmpl_docs:
+                    registered_lang = tmpl_docs[0].to_dict().get("language_code")
+                    if registered_lang:
+                        language_code = registered_lang
+            except Exception:
+                pass
+
         url = f"https://graph.facebook.com/v25.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
         headers = {
             "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
@@ -623,6 +636,20 @@ class WhatsAppService:
 
         try:
             response = requests.post(url, headers=headers, json=payload, timeout=10)
+            # Automatic fallback retry if language translation is missing (#132001)
+            if not response.ok:
+                try:
+                    err_json = response.json().get("error", {})
+                    if err_json.get("code") == 132001:
+                        fallback_lang = "en" if language_code == "en_US" else ("en_US" if language_code == "en" else None)
+                        if fallback_lang:
+                            logger.info("Template %s translation missing for %s. Retrying with fallback %s...", template_name, language_code, fallback_lang)
+                            payload["template"]["language"]["code"] = fallback_lang
+                            fallback_res = requests.post(url, headers=headers, json=payload, timeout=10)
+                            if fallback_res.ok:
+                                response = fallback_res
+                except Exception:
+                    pass
             response.raise_for_status()
 
             # Resolve actual human body text from Firestore meta_templates
