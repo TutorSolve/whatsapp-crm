@@ -22,7 +22,7 @@ export default function MessageStatusTicks({ status }: MessageStatusTicksProps) 
     case 'READ':
       return (
         <span title="Read" className="inline-flex">
-          <CheckCheck size={14} className="text-blue-400" />
+          <CheckCheck size={14} className="text-[#53bdeb]" />
         </span>
       );
     case 'FAILED':
