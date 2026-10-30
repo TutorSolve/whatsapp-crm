@@ -417,6 +417,10 @@ class WhatsAppService:
                 direction="OUTBOUND",
                 delivery_status="SENT"
             )
+            meta_msg_id = response.json().get("messages", [{}])[0].get("id")
+            if meta_msg_id:
+                outbound_msg.meta_message_id = meta_msg_id
+
             db.client.collection("messages").document(outbound_msg.id).set(outbound_msg.to_dict())
 
             now = datetime.now(timezone.utc)
@@ -434,6 +438,7 @@ class WhatsAppService:
                     'text_body': text,
                     'direction': 'OUTBOUND',
                     'sender_type': 'AGENT',
+                    'delivery_status': 'SENT',
                     'timestamp': now.isoformat(),
                     'preview': preview
                 }
@@ -541,6 +546,10 @@ class WhatsAppService:
                 direction="OUTBOUND",
                 delivery_status="SENT"
             )
+            meta_msg_id = send_resp.json().get("messages", [{}])[0].get("id")
+            if meta_msg_id:
+                outbound_msg.meta_message_id = meta_msg_id
+
             db.client.collection("messages").document(outbound_msg.id).set(outbound_msg.to_dict())
 
             now = datetime.now(timezone.utc)
@@ -561,6 +570,7 @@ class WhatsAppService:
                     'direction': 'OUTBOUND',
                     'sender_type': 'AGENT',
                     'message_type': msg_type.upper(),
+                    'delivery_status': 'SENT',
                     'timestamp': now.isoformat(),
                     'preview': preview
                 }
@@ -700,6 +710,7 @@ class WhatsAppService:
                     'direction': 'OUTBOUND',
                     'sender_type': 'AGENT',
                     'message_type': 'TEMPLATE',
+                    'delivery_status': 'SENT',
                     'timestamp': now.isoformat(),
                     'preview': preview
                 }
