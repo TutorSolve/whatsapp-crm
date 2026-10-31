@@ -52,11 +52,11 @@ def _is_within_business_hours(settings: dict, now: datetime | None = None) -> bo
     if not start or not end:
         return True
 
-    from zoneinfo import ZoneInfo
     try:
+        from zoneinfo import ZoneInfo
         tz = ZoneInfo(settings.get("timezone") or "UTC")
     except Exception:
-        tz = ZoneInfo("UTC")
+        tz = timezone.utc
 
     now_local = (now or datetime.now(timezone.utc)).astimezone(tz)
 
@@ -150,8 +150,10 @@ def _extract_meta_error(e: requests.exceptions.RequestException) -> str:
 class WhatsAppService:
     @staticmethod
     def process_status_update(meta_message_id: str, status: str) -> None:
-        new_delivery_status = META_STATUS_TO_DELIVERY_STATUS.get(status)
+        normalized_status = (status or "").lower().strip()
+        new_delivery_status = META_STATUS_TO_DELIVERY_STATUS.get(normalized_status)
         if not new_delivery_status:
+            logger.info("Ignoring unknown Meta status: %s for meta_message_id %s", status, meta_message_id)
             return
 
         matches = list(
@@ -161,6 +163,7 @@ class WhatsAppService:
             .stream()
         )
         if not matches:
+            logger.info("No message found for meta_message_id %s (status: %s)", meta_message_id, status)
             return
 
         msg_doc = matches[0]
@@ -176,11 +179,38 @@ class WhatsAppService:
         db.client.collection("messages").document(msg_doc.id).update({"delivery_status": new_delivery_status})
 
         from app.core.socket_events import socketio
+        conversation_id = msg_data.get("conversation_id")
         socketio.emit('message_status_updated', {
-            'conversation_id': msg_data.get("conversation_id"),
+            'conversation_id': conversation_id,
             'message_id': msg_doc.id,
             'delivery_status': new_delivery_status
         })
+        logger.info("Updated message %s (%s) status to %s", msg_doc.id, meta_message_id, new_delivery_status)
+
+        # When a message is marked as READ, cascade READ status to any prior outbound messages in that conversation
+        if new_delivery_status == "READ" and conversation_id:
+            target_ts = msg_data.get("timestamp")
+            target_str = target_ts.isoformat() if hasattr(target_ts, "isoformat") else str(target_ts or "")
+            conv_messages = list(
+                db.client.collection("messages")
+                .where("conversation_id", "==", conversation_id)
+                .stream()
+            )
+            for doc in conv_messages:
+                if doc.id == msg_doc.id:
+                    continue
+                d = doc.to_dict()
+                if d.get("direction") == "OUTBOUND" and d.get("delivery_status") in ["SENT", "DELIVERED"]:
+                    doc_ts = d.get("timestamp")
+                    doc_str = doc_ts.isoformat() if hasattr(doc_ts, "isoformat") else str(doc_ts or "")
+                    if not target_str or not doc_str or doc_str <= target_str:
+                        db.client.collection("messages").document(doc.id).update({"delivery_status": "READ"})
+                        socketio.emit('message_status_updated', {
+                            'conversation_id': conversation_id,
+                            'message_id': doc.id,
+                            'delivery_status': 'READ'
+                        })
+                        logger.info("Cascaded READ status to prior message %s in conversation %s", doc.id, conversation_id)
 
     @staticmethod
     def process_incoming_message(
@@ -356,6 +386,23 @@ class WhatsAppService:
                 'preview': preview
             }
         })
+
+        # Auto-read heuristic: A customer reply implies they have seen/read prior outbound messages
+        conv_messages = list(
+            messages_ref
+            .where("conversation_id", "==", conversation_id)
+            .stream()
+        )
+        for doc in conv_messages:
+            d = doc.to_dict()
+            if d.get("direction") == "OUTBOUND" and d.get("delivery_status") in ["SENT", "DELIVERED"]:
+                messages_ref.document(doc.id).update({"delivery_status": "READ"})
+                socketio.emit('message_status_updated', {
+                    'conversation_id': conversation_id,
+                    'message_id': doc.id,
+                    'delivery_status': 'READ'
+                })
+                logger.info("Auto-read outbound message %s on customer reply in conversation %s", doc.id, conversation_id)
         
         # Trigger greeting automation if this is a new window
         if is_new_window:

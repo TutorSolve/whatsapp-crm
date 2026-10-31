@@ -21,8 +21,8 @@ export default function MessageStatusTicks({ status }: MessageStatusTicksProps) 
       );
     case 'READ':
       return (
-        <span title="Read" className="inline-flex text-[#53bdeb]">
-          <CheckCheck size={14} color="#53bdeb" className="text-[#53bdeb]" />
+        <span title="Read" className="inline-flex text-[#38bdf8] drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">
+          <CheckCheck size={14} color="#38bdf8" strokeWidth={2.5} className="text-[#38bdf8]" />
         </span>
       );
     case 'FAILED':

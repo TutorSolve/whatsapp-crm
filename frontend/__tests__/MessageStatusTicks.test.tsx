@@ -19,7 +19,7 @@ describe('MessageStatusTicks Component', () => {
     render(<MessageStatusTicks status="READ" />);
     const el = screen.getByTitle('Read');
     expect(el).toBeInTheDocument();
-    expect(el.querySelector('svg')).toHaveClass('text-[#53bdeb]');
+    expect(el.querySelector('svg')).toHaveClass('text-[#38bdf8]');
   });
 
   it('shows a failure indicator for FAILED', () => {

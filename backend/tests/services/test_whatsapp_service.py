@@ -539,3 +539,71 @@ def test_send_media_message_without_caption_gets_friendly_preview(app, mock_db_c
     refreshed = mock_db_client.collection("conversations").document(conversation.id).get().to_dict()
     assert refreshed["last_message_preview"] not in ("", "[DOCUMENT]")
     assert "Document" in refreshed["last_message_preview"]
+
+
+def test_process_status_update_cascades_read_to_prior_messages(app, mock_db_client, mocker):
+    mock_emit = mocker.patch("app.core.socket_events.socketio.emit")
+    customer = Customer(phone_hash=hash_phone("888"), real_phone_number_encrypted=encrypt_phone("888"), masked_id="L-cascade")
+    mock_db_client.collection("customers").document(customer.id).set(customer.to_dict())
+    conversation = Conversation(customer_id=customer.id)
+    mock_db_client.collection("conversations").document(conversation.id).set(conversation.to_dict())
+
+    from datetime import datetime, timezone, timedelta
+    t1 = datetime.now(timezone.utc) - timedelta(minutes=5)
+    t2 = datetime.now(timezone.utc)
+
+    msg1 = Message(
+        conversation_id=conversation.id, sender_type="AGENT", message_type="TEXT",
+        direction="OUTBOUND", delivery_status="DELIVERED", meta_message_id="wamid.msg1",
+        timestamp=t1
+    )
+    msg2 = Message(
+        conversation_id=conversation.id, sender_type="AGENT", message_type="TEXT",
+        direction="OUTBOUND", delivery_status="SENT", meta_message_id="wamid.msg2",
+        timestamp=t2
+    )
+    mock_db_client.collection("messages").document(msg1.id).set(msg1.to_dict())
+    mock_db_client.collection("messages").document(msg2.id).set(msg2.to_dict())
+
+    WhatsAppService.process_status_update(meta_message_id="wamid.msg2", status="read")
+
+    # Check both messages updated to READ
+    m1_data = mock_db_client.collection("messages").document(msg1.id).get().to_dict()
+    m2_data = mock_db_client.collection("messages").document(msg2.id).get().to_dict()
+    assert m2_data["delivery_status"] == "READ"
+    assert m1_data["delivery_status"] == "READ"
+
+    # Both emitted over socket
+    emitted_msg_ids = [call[0][1]["message_id"] for call in mock_emit.call_args_list if call[0][0] == "message_status_updated"]
+    assert msg2.id in emitted_msg_ids
+    assert msg1.id in emitted_msg_ids
+
+
+def test_process_incoming_message_marks_prior_outbound_messages_read(app, mock_db_client, mocker):
+    mock_emit = mocker.patch("app.core.socket_events.socketio.emit")
+    phone_hash_val = hash_phone("777")
+    customer = Customer(id=phone_hash_val, phone_hash=phone_hash_val, real_phone_number_encrypted=encrypt_phone("777"), masked_id="L-inbound-read")
+    mock_db_client.collection("customers").document(customer.id).set(customer.to_dict())
+    conversation = Conversation(customer_id=customer.id)
+    mock_db_client.collection("conversations").document(conversation.id).set(conversation.to_dict())
+
+    msg = Message(
+        conversation_id=conversation.id, sender_type="AGENT", message_type="TEXT",
+        direction="OUTBOUND", delivery_status="SENT", meta_message_id="wamid.out1"
+    )
+    mock_db_client.collection("messages").document(msg.id).set(msg.to_dict())
+
+    WhatsAppService.process_incoming_message(
+        phone="777", name="Customer Person", text="Got your message!",
+        meta_message_id="wamid.inbound-reply"
+    )
+
+    m_data = mock_db_client.collection("messages").document(msg.id).get().to_dict()
+    assert m_data["delivery_status"] == "READ"
+
+    emitted_statuses = [
+        call[0][1] for call in mock_emit.call_args_list 
+        if call[0][0] == "message_status_updated" and call[0][1]["message_id"] == msg.id
+    ]
+    assert len(emitted_statuses) == 1
+    assert emitted_statuses[0]["delivery_status"] == "READ"
