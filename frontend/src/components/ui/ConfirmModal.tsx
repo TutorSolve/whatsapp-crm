@@ -48,11 +48,18 @@ export function ConfirmModal({
             type="button"
             variant="ghost"
             onClick={onCancel}
-            className="border border-black text-[var(--color-text-primary)] hover:bg-gray-50 focus:border-[var(--color-brand-primary)] active:border-[var(--color-brand-primary)] focus:ring-[var(--color-brand-primary)]"
+            className="min-w-[88px] border border-black text-[var(--color-text-primary)] hover:bg-gray-50 focus:border-[var(--color-brand-primary)] active:border-[var(--color-brand-primary)] focus:ring-[var(--color-brand-primary)]"
           >
             {cancelLabel}
           </Button>
-          <Button type="button" variant="danger" onClick={onConfirm}>{confirmLabel}</Button>
+          <Button
+            type="button"
+            variant="danger"
+            onClick={onConfirm}
+            className="min-w-[88px]"
+          >
+            {confirmLabel}
+          </Button>
         </div>
       </div>
     </div>
