@@ -388,7 +388,7 @@ export default function CrmSidebar({ conversation, currentUser, onAddNote, onSta
           <ConfirmModal
             title="Block this customer?"
             description="This customer will be blocked on WhatsApp. Any further incoming messages from them will be dropped, and agents will not be able to send messages until unblocked."
-            confirmLabel="Yes, Block Customer"
+            confirmLabel="Yes"
             onConfirm={handleBlockCustomer}
             onCancel={() => setShowBlockConfirm(false)}
           />
@@ -398,7 +398,7 @@ export default function CrmSidebar({ conversation, currentUser, onAddNote, onSta
           <ConfirmModal
             title="Unblock this customer?"
             description="This customer will be unblocked on WhatsApp and will be able to message your business again."
-            confirmLabel="Yes, Unblock Customer"
+            confirmLabel="Yes"
             onConfirm={handleUnblockCustomer}
             onCancel={() => setShowUnblockConfirm(false)}
           />

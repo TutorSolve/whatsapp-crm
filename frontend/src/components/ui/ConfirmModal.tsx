@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from './Button';
 
 interface ConfirmModalProps {
   title: string;
   description: React.ReactNode;
   confirmLabel?: string;
+  cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -16,8 +18,21 @@ interface ConfirmModalProps {
  * use this instead, so every "are you sure you want to delete X" moment in
  * the app looks and behaves the same way.
  */
-export function ConfirmModal({ title, description, confirmLabel = 'Confirm', onConfirm, onCancel }: ConfirmModalProps) {
-  return (
+export function ConfirmModal({
+  title,
+  description,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  onConfirm,
+  onCancel,
+}: ConfirmModalProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const modalContent = (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onCancel}
@@ -29,10 +44,23 @@ export function ConfirmModal({ title, description, confirmLabel = 'Confirm', onC
         <h2 className="text-lg font-bold text-[var(--color-text-primary)] mb-2">{title}</h2>
         <div className="text-sm text-[var(--color-text-secondary)] mb-6">{description}</div>
         <div className="flex justify-end space-x-3">
-          <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onCancel}
+            className="border border-black text-[var(--color-text-primary)] hover:bg-gray-50 focus:border-[var(--color-brand-primary)] active:border-[var(--color-brand-primary)] focus:ring-[var(--color-brand-primary)]"
+          >
+            {cancelLabel}
+          </Button>
           <Button type="button" variant="danger" onClick={onConfirm}>{confirmLabel}</Button>
         </div>
       </div>
     </div>
   );
+
+  if (!mounted || typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(modalContent, document.body);
 }

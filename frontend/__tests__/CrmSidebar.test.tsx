@@ -296,7 +296,7 @@ describe('CrmSidebar Component - Tags', () => {
 
       expect(screen.getByText(/block this customer\?/i)).toBeInTheDocument();
 
-      const confirmBtn = screen.getByRole('button', { name: /yes, block customer/i });
+      const confirmBtn = screen.getByRole('button', { name: /^yes$/i });
       fireEvent.click(confirmBtn);
 
       await waitFor(() => {
@@ -322,7 +322,7 @@ describe('CrmSidebar Component - Tags', () => {
 
       expect(screen.getByText(/unblock this customer\?/i)).toBeInTheDocument();
 
-      const confirmBtn = screen.getByRole('button', { name: /yes, unblock customer/i });
+      const confirmBtn = screen.getByRole('button', { name: /^yes$/i });
       fireEvent.click(confirmBtn);
 
       await waitFor(() => {
