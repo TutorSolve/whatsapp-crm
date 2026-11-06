@@ -488,27 +488,9 @@ export default function MessageThread({ conversationId, conversation, newMessage
 
       {/* Input */}
       {conversation?.status === 'BLOCKED' ? (
-        <div className="p-4 border-t border-red-200 bg-red-50/70 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm text-red-700 font-medium">
-            <Ban size={18} className="text-red-500 shrink-0" />
-            <span>This customer is blocked. Outbound messaging is disabled.</span>
-          </div>
-          <button
-            onClick={async () => {
-              try {
-                await fetch(`${API_URL}/api/conversations/${conversationId}/unblock`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  credentials: 'include'
-                });
-              } catch (e) {
-                console.error('Failed to unblock customer', e);
-              }
-            }}
-            className="px-3.5 py-1.5 text-xs font-bold bg-white border border-emerald-500 text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors shrink-0 shadow-sm"
-          >
-            Unblock Customer
-          </button>
+        <div className="p-4 border-t border-red-200 bg-red-50/70 flex items-center gap-2 text-sm text-red-700 font-medium">
+          <Ban size={18} className="text-red-500 shrink-0" />
+          <span>This customer is blocked. Outbound messaging is disabled.</span>
         </div>
       ) : (
         <div className="p-2 sm:p-4 border-t border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)]">
