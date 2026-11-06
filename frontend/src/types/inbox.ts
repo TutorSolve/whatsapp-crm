@@ -1,6 +1,6 @@
 export interface Conversation {
   id: string;
-  status: 'OPEN' | 'PENDING' | 'RESOLVED';
+  status: 'OPEN' | 'PENDING' | 'RESOLVED' | 'BLOCKED';
   unread_count: number;
   last_message_preview: string | null;
   last_message_at: string | null;
@@ -11,6 +11,7 @@ export interface Conversation {
   profile_photo_url: string | null;
   tags?: string[];
   whatsapp_window_expires_at?: string | null;
+  is_blocked?: boolean;
 }
 
 export interface Message {

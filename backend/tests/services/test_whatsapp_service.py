@@ -607,3 +607,54 @@ def test_process_incoming_message_marks_prior_outbound_messages_read(app, mock_d
     ]
     assert len(emitted_statuses) == 1
     assert emitted_statuses[0]["delivery_status"] == "READ"
+
+
+def test_block_and_unblock_customer(app, mock_db_client, mocker):
+    mock_emit = mocker.patch("app.core.socket_events.socketio.emit")
+    mocker.patch("requests.post")
+    mocker.patch("requests.delete")
+
+    phone_hash_val = hash_phone("9991112222")
+    customer = Customer(
+        id=phone_hash_val,
+        phone_hash=phone_hash_val,
+        real_phone_number_encrypted=encrypt_phone("9991112222"),
+        masked_id="L-block"
+    )
+    mock_db_client.collection("customers").document(customer.id).set(customer.to_dict())
+    conversation = Conversation(customer_id=customer.id)
+    mock_db_client.collection("conversations").document(conversation.id).set(conversation.to_dict())
+
+    # Block
+    success, err = WhatsAppService.block_customer(conversation.id, actor_user_id="admin-1")
+    assert success is True
+    assert err is None
+
+    cust_after_block = mock_db_client.collection("customers").document(customer.id).get().to_dict()
+    conv_after_block = mock_db_client.collection("conversations").document(conversation.id).get().to_dict()
+    assert cust_after_block["is_blocked"] is True
+    assert conv_after_block["status"] == "BLOCKED"
+    assert conv_after_block["is_blocked"] is True
+
+    # Outbound message should be rejected
+    send_ok, send_err = WhatsAppService.send_message(conversation.id, "Hello blocked user")
+    assert send_ok is False
+    assert "blocked" in send_err.lower()
+
+    # Incoming message should be dropped
+    WhatsAppService.process_incoming_message(
+        phone="9991112222", name="Spammer", text="Spam message", meta_message_id="wamid.spam"
+    )
+    messages_in_db = list(mock_db_client.collection("messages").where("conversation_id", "==", conversation.id).stream())
+    assert len(messages_in_db) == 0
+
+    # Unblock
+    unblock_ok, unblock_err = WhatsAppService.unblock_customer(conversation.id, actor_user_id="admin-1")
+    assert unblock_ok is True
+    assert unblock_err is None
+
+    cust_after_unblock = mock_db_client.collection("customers").document(customer.id).get().to_dict()
+    conv_after_unblock = mock_db_client.collection("conversations").document(conversation.id).get().to_dict()
+    assert cust_after_unblock["is_blocked"] is False
+    assert conv_after_unblock["status"] == "OPEN"
+    assert conv_after_unblock["is_blocked"] is False

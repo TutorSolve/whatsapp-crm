@@ -255,8 +255,13 @@ class WhatsAppService:
             customer_snapshot = next(transaction.get(customer_ref))
             customer_exists = customer_snapshot.exists
 
+            if customer_exists and customer_snapshot.to_dict().get("is_blocked"):
+                return None, False
+
             query = convs_ref.where("customer_id", "==", phone_hash_val).limit(1)
             results = list(query.stream(transaction=transaction))
+            if results and results[0].to_dict().get("status") == "BLOCKED":
+                return None, False
 
             active_agents = []
             all_open_convs = []
@@ -338,6 +343,9 @@ class WhatsAppService:
 
         transaction = db.client.transaction()
         conversation_id, is_new_window = get_or_create_customer_and_conversation(transaction)
+        if not conversation_id:
+            logger.info("Dropping incoming message from blocked customer %s", phone_hash_val)
+            return
 
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(hours=24)
@@ -426,11 +434,18 @@ class WhatsAppService:
             raise ConversationNotFoundError("Conversation not found")
 
         conv_data = conv_doc.to_dict()
+        if conv_data.get("status") == "BLOCKED" or conv_data.get("is_blocked"):
+            return False, "Cannot send message: customer is blocked. Please unblock first."
+
         customer_id = conv_data.get("customer_id")
 
         cust_doc = db.client.collection("customers").document(customer_id).get()
         if not cust_doc.exists:
             raise CustomerNotFoundError("Customer not found")
+
+        cust_data = cust_doc.to_dict()
+        if cust_data.get("is_blocked"):
+            return False, "Cannot send message: customer is blocked. Please unblock first."
 
         try:
             to_phone = decrypt_phone(cust_doc.to_dict().get("real_phone_number_encrypted"))
@@ -508,10 +523,18 @@ class WhatsAppService:
         if not conv_doc.exists:
             raise ConversationNotFoundError("Conversation not found")
 
-        customer_id = conv_doc.to_dict().get("customer_id")
+        conv_data = conv_doc.to_dict()
+        if conv_data.get("status") == "BLOCKED" or conv_data.get("is_blocked"):
+            return False, "Cannot send message: customer is blocked. Please unblock first."
+
+        customer_id = conv_data.get("customer_id")
         cust_doc = db.client.collection("customers").document(customer_id).get()
         if not cust_doc.exists:
             raise CustomerNotFoundError("Customer not found")
+
+        cust_data = cust_doc.to_dict()
+        if cust_data.get("is_blocked"):
+            return False, "Cannot send message: customer is blocked. Please unblock first."
 
         try:
             to_phone = decrypt_phone(cust_doc.to_dict().get("real_phone_number_encrypted"))
@@ -640,10 +663,18 @@ class WhatsAppService:
         if not conv_doc.exists:
             raise ConversationNotFoundError("Conversation not found")
 
-        customer_id = conv_doc.to_dict().get("customer_id")
+        conv_data = conv_doc.to_dict()
+        if conv_data.get("status") == "BLOCKED" or conv_data.get("is_blocked"):
+            return False, "Cannot send message: customer is blocked. Please unblock first."
+
+        customer_id = conv_data.get("customer_id")
         cust_doc = db.client.collection("customers").document(customer_id).get()
         if not cust_doc.exists:
             raise CustomerNotFoundError("Customer not found")
+
+        cust_data = cust_doc.to_dict()
+        if cust_data.get("is_blocked"):
+            return False, "Cannot send message: customer is blocked. Please unblock first."
 
         try:
             to_phone = decrypt_phone(cust_doc.to_dict().get("real_phone_number_encrypted"))
@@ -771,4 +802,130 @@ class WhatsAppService:
             logger.warning("Meta API request failed with HTTP %s: %s", status, body)
             err_msg = _extract_meta_error(e)
             return False, f"Failed to send message: {err_msg}"
+
+    @staticmethod
+    def block_customer(conversation_id: str, actor_user_id: str | None = None) -> tuple[bool, str | None]:
+        convs_ref = db.client.collection("conversations")
+        conv_doc = convs_ref.document(conversation_id).get()
+        if not conv_doc.exists:
+            raise ConversationNotFoundError("Conversation not found")
+
+        conv_data = conv_doc.to_dict()
+        customer_id = conv_data.get("customer_id")
+        cust_ref = db.client.collection("customers").document(customer_id)
+        cust_doc = cust_ref.get()
+        if not cust_doc.exists:
+            raise CustomerNotFoundError("Customer not found")
+
+        cust_data = cust_doc.to_dict()
+
+        to_phone = None
+        try:
+            to_phone = decrypt_phone(cust_data.get("real_phone_number_encrypted"))
+        except Exception as e:
+            logger.warning("Could not decrypt phone number for block: %s", e)
+
+        # Call Meta Block Users API if configured
+        if to_phone and WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID:
+            meta_url = f"https://graph.facebook.com/v25.0/{WHATSAPP_PHONE_NUMBER_ID}/block_users"
+            headers = {
+                "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "messaging_product": "whatsapp",
+                "block_users": [{"user": to_phone}]
+            }
+            try:
+                resp = requests.post(meta_url, headers=headers, json=payload, timeout=10)
+                if not resp.ok:
+                    logger.warning("Meta block_users returned %s: %s", resp.status_code, resp.text)
+            except Exception as e:
+                logger.warning("Failed to call Meta block_users API: %s", e)
+
+        now = datetime.now(timezone.utc)
+        cust_ref.update({
+            "is_blocked": True,
+            "blocked_at": now,
+            "blocked_by": actor_user_id,
+            "updated_at": now
+        })
+        convs_ref.document(conversation_id).update({
+            "status": "BLOCKED",
+            "is_blocked": True,
+            "updated_at": now
+        })
+
+        from app.core.socket_events import socketio
+        socketio.emit('conversation_updated', {
+            'conversation_id': conversation_id,
+            'status': 'BLOCKED',
+            'is_blocked': True
+        })
+
+        logger.info("Successfully blocked customer %s in conversation %s by %s", customer_id, conversation_id, actor_user_id)
+        return True, None
+
+    @staticmethod
+    def unblock_customer(conversation_id: str, actor_user_id: str | None = None) -> tuple[bool, str | None]:
+        convs_ref = db.client.collection("conversations")
+        conv_doc = convs_ref.document(conversation_id).get()
+        if not conv_doc.exists:
+            raise ConversationNotFoundError("Conversation not found")
+
+        conv_data = conv_doc.to_dict()
+        customer_id = conv_data.get("customer_id")
+        cust_ref = db.client.collection("customers").document(customer_id)
+        cust_doc = cust_ref.get()
+        if not cust_doc.exists:
+            raise CustomerNotFoundError("Customer not found")
+
+        cust_data = cust_doc.to_dict()
+
+        to_phone = None
+        try:
+            to_phone = decrypt_phone(cust_data.get("real_phone_number_encrypted"))
+        except Exception as e:
+            logger.warning("Could not decrypt phone number for unblock: %s", e)
+
+        # Call Meta Unblock API if configured
+        if to_phone and WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID:
+            meta_url = f"https://graph.facebook.com/v25.0/{WHATSAPP_PHONE_NUMBER_ID}/block_users"
+            headers = {
+                "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "messaging_product": "whatsapp",
+                "block_users": [{"user": to_phone}]
+            }
+            try:
+                resp = requests.delete(meta_url, headers=headers, json=payload, timeout=10)
+                if not resp.ok:
+                    logger.warning("Meta unblock returned %s: %s", resp.status_code, resp.text)
+            except Exception as e:
+                logger.warning("Failed to call Meta unblock API: %s", e)
+
+        now = datetime.now(timezone.utc)
+        cust_ref.update({
+            "is_blocked": False,
+            "blocked_at": None,
+            "blocked_by": None,
+            "updated_at": now
+        })
+        convs_ref.document(conversation_id).update({
+            "status": "OPEN",
+            "is_blocked": False,
+            "updated_at": now
+        })
+
+        from app.core.socket_events import socketio
+        socketio.emit('conversation_updated', {
+            'conversation_id': conversation_id,
+            'status': 'OPEN',
+            'is_blocked': False
+        })
+
+        logger.info("Successfully unblocked customer %s in conversation %s by %s", customer_id, conversation_id, actor_user_id)
+        return True, None
 

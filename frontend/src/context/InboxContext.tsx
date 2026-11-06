@@ -160,10 +160,15 @@ export function InboxProvider({ children }: { children: React.ReactNode }) {
       });
     };
 
-    const onConversationUpdated = (payload: { conversation_id: string, whatsapp_window_expires_at: string }) => {
+    const onConversationUpdated = (payload: { conversation_id: string, whatsapp_window_expires_at?: string, status?: Conversation['status'], is_blocked?: boolean }) => {
       setConversations(prev => prev.map(c => 
         c.id === payload.conversation_id 
-          ? { ...c, whatsapp_window_expires_at: payload.whatsapp_window_expires_at }
+          ? { 
+              ...c, 
+              ...(payload.whatsapp_window_expires_at !== undefined && { whatsapp_window_expires_at: payload.whatsapp_window_expires_at }),
+              ...(payload.status !== undefined && { status: payload.status }),
+              ...(payload.is_blocked !== undefined && { is_blocked: payload.is_blocked })
+            }
           : c
       ));
     };

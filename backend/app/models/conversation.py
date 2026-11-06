@@ -19,6 +19,7 @@ class Conversation:
     last_message_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     last_customer_message_at: Optional[datetime] = None
     whatsapp_window_expires_at: Optional[datetime] = None
+    is_blocked: bool = False
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -35,6 +36,7 @@ class Conversation:
             "last_message_at": self.last_message_at,
             "last_customer_message_at": self.last_customer_message_at,
             "whatsapp_window_expires_at": self.whatsapp_window_expires_at,
+            "is_blocked": self.is_blocked,
             "created_at": self.created_at,
             "updated_at": self.updated_at
         }

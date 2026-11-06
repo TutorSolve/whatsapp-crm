@@ -193,8 +193,13 @@ export default function ChatList({ conversations, selectedId, onSelect, isSocket
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="font-bold truncate text-[var(--color-text-primary)]">
-                      {conv.whatsapp_name || conv.masked_id}
+                    <span className="font-bold truncate text-[var(--color-text-primary)] flex items-center gap-1.5 min-w-0">
+                      <span className="truncate">{conv.whatsapp_name || conv.masked_id}</span>
+                      {conv.status === 'BLOCKED' && (
+                        <span className="shrink-0 text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200">
+                          Blocked
+                        </span>
+                      )}
                     </span>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-medium text-[var(--color-text-muted)] whitespace-nowrap">

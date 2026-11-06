@@ -16,6 +16,9 @@ class Customer:
     profile_photo_url: Optional[str] = None
     about: Optional[str] = None
     external_crm_id: Optional[str] = None
+    is_blocked: bool = False
+    blocked_at: Optional[datetime] = None
+    blocked_by: Optional[str] = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -29,6 +32,9 @@ class Customer:
             "profile_photo_url": self.profile_photo_url,
             "about": self.about,
             "external_crm_id": self.external_crm_id,
+            "is_blocked": self.is_blocked,
+            "blocked_at": self.blocked_at,
+            "blocked_by": self.blocked_by,
             "created_at": self.created_at,
             "updated_at": self.updated_at
         }

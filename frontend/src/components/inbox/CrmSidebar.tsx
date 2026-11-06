@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Info, User, Clock, Copy, Check, ChevronDown, Circle } from 'lucide-react';
+import { Info, User, Clock, Copy, Check, ChevronDown, Circle, Ban } from 'lucide-react';
 import type { Conversation } from '@/types/inbox';
 import type { CurrentUser } from '@/types/auth';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
@@ -69,6 +69,10 @@ export default function CrmSidebar({ conversation, currentUser, onAddNote, onSta
   const [isMarkingResolved, setIsMarkingResolved] = useState(false);
   const [resolveError, setResolveError] = useState('');
   const [showResolveConfirm, setShowResolveConfirm] = useState(false);
+  const [isBlocking, setIsBlocking] = useState(false);
+  const [blockError, setBlockError] = useState('');
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+  const [showUnblockConfirm, setShowUnblockConfirm] = useState(false);
 
   // Sync localTags when conversation changes
   React.useEffect(() => {
@@ -87,6 +91,10 @@ export default function CrmSidebar({ conversation, currentUser, onAddNote, onSta
     setRevealError('');
     setResolveError('');
     setShowResolveConfirm(false);
+    setIsBlocking(false);
+    setBlockError('');
+    setShowBlockConfirm(false);
+    setShowUnblockConfirm(false);
   }, [conversation?.id]);
 
   const handleAssign = async (agentId: string | null, agentName: string | null = null) => {
@@ -207,6 +215,54 @@ export default function CrmSidebar({ conversation, currentUser, onAddNote, onSta
     }
   };
 
+  const handleBlockCustomer = async () => {
+    if (!conversation) return;
+    setShowBlockConfirm(false);
+    setIsBlocking(true);
+    setBlockError('');
+    try {
+      const res = await fetch(`${API_URL}/api/conversations/${conversation.id}/block`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+      if (res.ok) {
+        onStatusChange?.(conversation.id, 'BLOCKED');
+      } else {
+        const data = await res.json().catch(() => null);
+        setBlockError(data?.message || 'Failed to block customer');
+      }
+    } catch (err) {
+      setBlockError('Network error');
+    } finally {
+      setIsBlocking(false);
+    }
+  };
+
+  const handleUnblockCustomer = async () => {
+    if (!conversation) return;
+    setShowUnblockConfirm(false);
+    setIsBlocking(true);
+    setBlockError('');
+    try {
+      const res = await fetch(`${API_URL}/api/conversations/${conversation.id}/unblock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+      if (res.ok) {
+        onStatusChange?.(conversation.id, 'OPEN');
+      } else {
+        const data = await res.json().catch(() => null);
+        setBlockError(data?.message || 'Failed to unblock customer');
+      }
+    } catch (err) {
+      setBlockError('Network error');
+    } finally {
+      setIsBlocking(false);
+    }
+  };
+
   const handleRevealNumber = async () => {
     setIsRevealing(true);
     setRevealError('');
@@ -279,7 +335,7 @@ export default function CrmSidebar({ conversation, currentUser, onAddNote, onSta
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={onAddNote}
-              disabled={!onAddNote}
+              disabled={!onAddNote || conversation.status === 'BLOCKED'}
               title={onAddNote ? 'Add an internal note' : 'Not available here'}
               className="py-2 px-3 text-xs font-semibold bg-[var(--color-bg-base)] border border-[var(--color-border-subtle)] rounded-lg text-[var(--color-text-primary)] hover:border-[var(--color-brand-primary)] hover:text-[var(--color-brand-primary)] transition-colors disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed disabled:hover:border-[var(--color-border-subtle)] disabled:hover:text-[var(--color-text-muted)]"
             >
@@ -287,12 +343,33 @@ export default function CrmSidebar({ conversation, currentUser, onAddNote, onSta
             </button>
             <button
               onClick={() => setShowResolveConfirm(true)}
-              disabled={isMarkingResolved || conversation.status === 'RESOLVED'}
+              disabled={isMarkingResolved || conversation.status === 'RESOLVED' || conversation.status === 'BLOCKED'}
               title={conversation.status === 'RESOLVED' ? 'Already resolved' : 'Mark this conversation resolved'}
               className="py-2 px-3 text-xs font-semibold bg-[var(--color-bg-base)] border border-[var(--color-border-subtle)] rounded-lg text-[var(--color-text-primary)] hover:border-[var(--color-brand-primary)] hover:text-[var(--color-brand-primary)] transition-colors disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed disabled:hover:border-[var(--color-border-subtle)] disabled:hover:text-[var(--color-text-muted)]"
             >
               {isMarkingResolved ? 'Marking...' : 'Mark Resolved'}
             </button>
+          </div>
+          <div className="mt-2">
+            {conversation.status === 'BLOCKED' ? (
+              <button
+                onClick={() => setShowUnblockConfirm(true)}
+                disabled={isBlocking}
+                className="w-full py-2 px-3 text-xs font-semibold bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-800 hover:bg-emerald-100 hover:border-emerald-400 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                {isBlocking ? 'Unblocking...' : 'Unblock Contact'}
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowBlockConfirm(true)}
+                disabled={isBlocking}
+                className="w-full py-2 px-3 text-xs font-semibold bg-[var(--color-bg-surface)] border border-red-200 rounded-lg text-red-600 hover:bg-red-50 hover:border-red-300 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <Ban size={13} className="text-red-500" />
+                {isBlocking ? 'Blocking...' : 'Block Contact'}
+              </button>
+            )}
+            {blockError && <p className="text-[var(--color-status-error)] text-xs mt-2">{blockError}</p>}
           </div>
           {resolveError && <p className="text-[var(--color-status-error)] text-xs mt-2">{resolveError}</p>}
         </div>
@@ -304,6 +381,26 @@ export default function CrmSidebar({ conversation, currentUser, onAddNote, onSta
             confirmLabel="Yes, Mark Resolved"
             onConfirm={handleMarkResolved}
             onCancel={() => setShowResolveConfirm(false)}
+          />
+        )}
+
+        {showBlockConfirm && (
+          <ConfirmModal
+            title="Block this customer?"
+            description="This customer will be blocked on WhatsApp. Any further incoming messages from them will be dropped, and agents will not be able to send messages until unblocked."
+            confirmLabel="Yes, Block Customer"
+            onConfirm={handleBlockCustomer}
+            onCancel={() => setShowBlockConfirm(false)}
+          />
+        )}
+
+        {showUnblockConfirm && (
+          <ConfirmModal
+            title="Unblock this customer?"
+            description="This customer will be unblocked on WhatsApp and will be able to message your business again."
+            confirmLabel="Yes, Unblock Customer"
+            onConfirm={handleUnblockCustomer}
+            onCancel={() => setShowUnblockConfirm(false)}
           />
         )}
 
@@ -375,12 +472,23 @@ export default function CrmSidebar({ conversation, currentUser, onAddNote, onSta
           <h4 className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">Conversation Status</h4>
           <div className="flex items-center gap-2">
             <span className={`px-4 py-1.5 rounded-full text-xs font-extrabold tracking-wide ${
+              conversation.status === 'BLOCKED' ? 'bg-red-100 text-red-700 border border-red-200' :
               conversation.status === 'OPEN' ? 'bg-green-100 text-green-700 border border-green-200' :
               conversation.status === 'PENDING' ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' :
               'bg-[var(--color-bg-base)] text-[var(--color-text-secondary)] border border-[var(--color-border-subtle)]'
             }`}>
               {conversation.status}
             </span>
+            {conversation.status === 'BLOCKED' && (
+              <button
+                onClick={() => setShowUnblockConfirm(true)}
+                disabled={isBlocking}
+                className="px-3 py-1.5 rounded-full text-xs font-bold bg-white border border-emerald-500 text-emerald-700 hover:bg-emerald-50 transition-colors ml-auto shadow-sm"
+                title="Unblock Chat"
+              >
+                {isBlocking ? 'Unblocking...' : 'Unblock'}
+              </button>
+            )}
             {conversation.status === 'RESOLVED' && ['ADMIN', 'MANAGER'].includes(currentUser.role) && (
               <button
                 onClick={handleReopenChat}
@@ -398,7 +506,7 @@ export default function CrmSidebar({ conversation, currentUser, onAddNote, onSta
           <h4 className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">Assigned Agent</h4>
           
           <div className="relative">
-            {currentUser.role !== 'AGENT' && conversation.status !== 'RESOLVED' ? (
+            {currentUser.role !== 'AGENT' && conversation.status !== 'RESOLVED' && conversation.status !== 'BLOCKED' ? (
               <button 
                 onClick={() => setShowAssignDropdown(!showAssignDropdown)}
                 disabled={isAssigning}
@@ -415,7 +523,7 @@ export default function CrmSidebar({ conversation, currentUser, onAddNote, onSta
                 <ChevronDown size={16} className={`text-[var(--color-text-muted)] transition-transform ${showAssignDropdown ? 'rotate-180' : ''}`} />
               </button>
             ) : (
-              <div className={`w-full flex items-center justify-between text-sm font-medium bg-[var(--color-bg-base)] p-3 rounded-xl border border-[var(--color-border-subtle)] ${conversation.status === 'RESOLVED' ? 'opacity-60 cursor-not-allowed' : ''}`}>
+              <div className={`w-full flex items-center justify-between text-sm font-medium bg-[var(--color-bg-base)] p-3 rounded-xl border border-[var(--color-border-subtle)] ${conversation.status === 'RESOLVED' || conversation.status === 'BLOCKED' ? 'opacity-60 cursor-not-allowed' : ''}`}>
                 <div className="flex items-center gap-2">
                   <User size={16} className="text-[var(--color-text-muted)]" />
                   {conversation.assigned_agent_name ? (
@@ -467,7 +575,7 @@ export default function CrmSidebar({ conversation, currentUser, onAddNote, onSta
             )}
           </div>
           
-          {!conversation.assigned_agent_id && (
+          {!conversation.assigned_agent_id && conversation.status !== 'BLOCKED' && (
             <button
               onClick={() => handleAssign(currentUser.id, currentUser.full_name)}
               disabled={isAssigning}

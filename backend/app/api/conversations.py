@@ -6,7 +6,7 @@ from app.services.whatsapp_service import WhatsAppService, ConversationNotFoundE
 
 bp = Blueprint('conversations', __name__, url_prefix='/api/conversations')
 
-VALID_CONVERSATION_STATUSES = {"OPEN", "PENDING", "RESOLVED"}
+VALID_CONVERSATION_STATUSES = {"OPEN", "PENDING", "RESOLVED", "BLOCKED"}
 
 @bp.route('', methods=['GET'])
 @require_role('ADMIN', 'MANAGER', 'AGENT')
@@ -61,6 +61,7 @@ def get_conversations():
             "last_message_at": last_message_at.isoformat() if hasattr(last_message_at, "isoformat") else str(last_message_at) if last_message_at else None,
             "assigned_agent_id": assigned_agent_id,
             "assigned_agent_name": assigned_agent_name,
+            "is_blocked": conv.get("is_blocked", False) or conv.get("status") == "BLOCKED",
             "masked_id": cust.get("masked_id"),
             "whatsapp_name": cust.get("whatsapp_name"),
             "profile_photo_url": cust.get("profile_photo_url")
@@ -142,8 +143,12 @@ def send_message(conversation_id):
     conv_doc = db.client.collection("conversations").document(conversation_id).get()
     if not conv_doc.exists:
         return jsonify({"status": "error", "message": "Conversation not found"}), 404
+
+    conv_data = conv_doc.to_dict()
+    if conv_data.get("status") == "BLOCKED" or conv_data.get("is_blocked"):
+        return jsonify({"status": "error", "message": "This customer is blocked. Unblock them before sending messages."}), 403
         
-    expires_at = conv_doc.to_dict().get("whatsapp_window_expires_at")
+    expires_at = conv_data.get("whatsapp_window_expires_at")
     if expires_at:
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
@@ -386,6 +391,14 @@ def update_status(conversation_id):
 @bp.route('/<conversation_id>/messages/template', methods=['POST'])
 @require_role('ADMIN', 'MANAGER', 'AGENT')
 def send_template_message_endpoint(conversation_id):
+    conv_doc = db.client.collection("conversations").document(conversation_id).get()
+    if not conv_doc.exists:
+        return jsonify({"status": "error", "message": "Conversation not found"}), 404
+
+    conv_data = conv_doc.to_dict()
+    if conv_data.get("status") == "BLOCKED" or conv_data.get("is_blocked"):
+        return jsonify({"status": "error", "message": "This customer is blocked. Unblock them before sending messages."}), 403
+
     data = request.json
     if not data or not data.get('template_name'):
         return jsonify({"status": "error", "message": "template_name is required"}), 400
@@ -437,3 +450,35 @@ def send_template_message_endpoint(conversation_id):
             "timestamp": ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
         }
     }), 200
+
+@bp.route('/<conversation_id>/block', methods=['POST'])
+@require_role('ADMIN', 'MANAGER', 'AGENT')
+def block_conversation(conversation_id):
+    current_user_id = g.current_user.get("id")
+    try:
+        success, err = WhatsAppService.block_customer(conversation_id, current_user_id)
+        if not success:
+            return jsonify({"status": "error", "message": err or "Failed to block customer"}), 400
+        return jsonify({"status": "success", "message": "Customer blocked successfully"}), 200
+    except ConversationNotFoundError:
+        return jsonify({"status": "error", "message": "Conversation not found"}), 404
+    except CustomerNotFoundError:
+        return jsonify({"status": "error", "message": "Customer not found"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@bp.route('/<conversation_id>/unblock', methods=['POST'])
+@require_role('ADMIN', 'MANAGER', 'AGENT')
+def unblock_conversation(conversation_id):
+    current_user_id = g.current_user.get("id")
+    try:
+        success, err = WhatsAppService.unblock_customer(conversation_id, current_user_id)
+        if not success:
+            return jsonify({"status": "error", "message": err or "Failed to unblock customer"}), 400
+        return jsonify({"status": "success", "message": "Customer unblocked successfully"}), 200
+    except ConversationNotFoundError:
+        return jsonify({"status": "error", "message": "Conversation not found"}), 404
+    except CustomerNotFoundError:
+        return jsonify({"status": "error", "message": "Customer not found"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500

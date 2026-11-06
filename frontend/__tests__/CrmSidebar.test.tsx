@@ -278,4 +278,56 @@ describe('CrmSidebar Component - Tags', () => {
       expect(onTagsChange).toHaveBeenCalledWith('conv_a', []);
     });
   });
+
+  describe('CrmSidebar Component - Block & Unblock', () => {
+    it('asks for confirmation before blocking customer, and blocks on confirm', async () => {
+      global.fetch = jest.fn((url: string, opts?: RequestInit) => {
+        if (url.includes('/api/conversations/conv_a/block')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ status: 'success' }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ status: 'success', data: [] }) });
+      }) as jest.Mock;
+      const onStatusChange = jest.fn();
+
+      render(<CrmSidebar conversation={conversationA} currentUser={adminUser} onStatusChange={onStatusChange} />);
+
+      const blockBtn = screen.getByRole('button', { name: /block contact/i });
+      fireEvent.click(blockBtn);
+
+      expect(screen.getByText(/block this customer\?/i)).toBeInTheDocument();
+
+      const confirmBtn = screen.getByRole('button', { name: /yes, block customer/i });
+      fireEvent.click(confirmBtn);
+
+      await waitFor(() => {
+        expect(onStatusChange).toHaveBeenCalledWith('conv_a', 'BLOCKED');
+      });
+    });
+
+    it('shows unblock contact button when conversation is blocked and unblocks on confirm', async () => {
+      global.fetch = jest.fn((url: string, opts?: RequestInit) => {
+        if (url.includes('/api/conversations/conv_a/unblock')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ status: 'success' }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ status: 'success', data: [] }) });
+      }) as jest.Mock;
+      const onStatusChange = jest.fn();
+
+      const blockedConv = { ...conversationA, status: 'BLOCKED' as const };
+      render(<CrmSidebar conversation={blockedConv} currentUser={adminUser} onStatusChange={onStatusChange} />);
+
+      // Find the unblock button in Quick Actions
+      const unblockBtn = screen.getAllByRole('button', { name: /unblock/i })[0];
+      fireEvent.click(unblockBtn);
+
+      expect(screen.getByText(/unblock this customer\?/i)).toBeInTheDocument();
+
+      const confirmBtn = screen.getByRole('button', { name: /yes, unblock customer/i });
+      fireEvent.click(confirmBtn);
+
+      await waitFor(() => {
+        expect(onStatusChange).toHaveBeenCalledWith('conv_a', 'OPEN');
+      });
+    });
+  });
 });

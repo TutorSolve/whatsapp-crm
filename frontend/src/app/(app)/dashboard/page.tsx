@@ -81,7 +81,7 @@ function InboxContent({ currentUser }: { currentUser: CurrentUser }) {
 
   const handleStatusChange = (conversationId: string, newStatus: Conversation['status']) => {
     setConversations((prev) =>
-      prev.map((c) => (c.id === conversationId ? { ...c, status: newStatus } : c))
+      prev.map((c) => (c.id === conversationId ? { ...c, status: newStatus, is_blocked: newStatus === 'BLOCKED' } : c))
     );
   };
 

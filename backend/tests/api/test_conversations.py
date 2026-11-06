@@ -552,3 +552,34 @@ def test_assign_conversation(client, mock_db_client):
     assert response2.status_code == 200
     assert response2.json["data"]["assigned_agent_id"] is None
 
+
+
+def test_block_and_unblock_conversation_api(client, mock_db_client, mocker):
+    mocker.patch("requests.post")
+    mocker.patch("requests.delete")
+    mocker.patch("app.core.socket_events.socketio.emit")
+
+    admin = User(email="blockadmin@test.com", full_name="Admin", password_hash=hash_password("password"), role="ADMIN")
+    mock_db_client.collection("users").document(admin.id).set(admin.to_dict())
+
+    c = Customer(phone_hash=hash_phone("block123"), real_phone_number_encrypted=encrypt_phone("block123"), masked_id="Lead-Blk")
+    mock_db_client.collection("customers").document(c.id).set(c.to_dict())
+    conv = Conversation(customer_id=c.id, status="OPEN")
+    mock_db_client.collection("conversations").document(conv.id).set(conv.to_dict())
+
+    client.post('/api/auth/login', json={"email": "blockadmin@test.com", "password": "password"})
+
+    # Block
+    block_res = client.post(f'/api/conversations/{conv.id}/block')
+    assert block_res.status_code == 200
+    assert block_res.json["status"] == "success"
+
+    # Attempt to send message to blocked conversation
+    send_res = client.post(f'/api/conversations/{conv.id}/messages', json={"text": "Hello"})
+    assert send_res.status_code == 403
+    assert "blocked" in send_res.json["message"].lower()
+
+    # Unblock
+    unblock_res = client.post(f'/api/conversations/{conv.id}/unblock')
+    assert unblock_res.status_code == 200
+    assert unblock_res.json["status"] == "success"
