@@ -50,11 +50,13 @@ function TeamManagementContent() {
         body: JSON.stringify(formData)
       });
 
-      const responsePayload = await response.json();
-
       if (!response.ok) {
-        let errorMsg = responsePayload.message || 'Failed to create user';
-        if (responsePayload.errors && typeof responsePayload.errors === 'object') {
+        if (response.status === 429) {
+          throw new Error('Too many requests. Please wait a moment and try again.');
+        }
+        const responsePayload = await response.json().catch(() => null);
+        let errorMsg = responsePayload?.message || 'Failed to create user';
+        if (responsePayload?.errors && typeof responsePayload.errors === 'object') {
           const detailedErrors = Object.entries(responsePayload.errors)
             .map(([field, messages]) => `${field.replace('_', ' ')}: ${(messages as string[]).join(', ')}`)
             .join(' | ');
@@ -92,8 +94,12 @@ function TeamManagementContent() {
         // Optimistic update in-store
         setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, system_status: systemStatus } : u));
       } else {
-        const payload = await response.json();
-        setMutationError(payload.message || 'Failed to update account status');
+        if (response.status === 429) {
+          setMutationError('Too many requests. Please wait a moment and try again.');
+        } else {
+          const payload = await response.json().catch(() => null);
+          setMutationError(payload?.message || 'Failed to update account status');
+        }
       }
     } catch {
       setMutationError('An unexpected error occurred while updating account status');
@@ -115,8 +121,12 @@ function TeamManagementContent() {
         setSuccess('User deleted successfully');
         setUsers((prev) => prev.filter((u) => u.id !== userId));
       } else {
-        const payload = await response.json();
-        setMutationError(payload.message || 'Failed to delete user');
+        if (response.status === 429) {
+          setMutationError('Too many requests. Please wait a moment and try again.');
+        } else {
+          const payload = await response.json().catch(() => null);
+          setMutationError(payload?.message || 'Failed to delete user');
+        }
       }
     } catch {
       setMutationError('An unexpected error occurred while deleting user');

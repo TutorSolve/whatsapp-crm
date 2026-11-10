@@ -26,6 +26,9 @@ export default function ForgotPasswordPage() {
       });
 
       if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error('Too many requests. Please wait a few minutes and try again.');
+        }
         const payload = await response.json().catch(() => null);
         throw new Error(payload?.message || 'Something went wrong. Please try again.');
       }

@@ -33,10 +33,21 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password, remember_me: rememberMe })
       });
 
-      const responsePayload = await response.json();
-
       if (!response.ok) {
-        throw new Error(responsePayload.message || 'Login failed');
+        if (response.status === 429) {
+          throw new Error('Too many login attempts. Please wait a few minutes and try again.');
+        }
+        if (response.status >= 500) {
+          throw new Error('Server is temporarily unavailable. Please try again shortly.');
+        }
+
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message || 'Invalid email or password');
+      }
+
+      const responsePayload = await response.json().catch(() => null);
+      if (!responsePayload?.data?.user) {
+        throw new Error('Invalid response received from server');
       }
 
       // Success - Redirect based on role

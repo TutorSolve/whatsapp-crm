@@ -40,9 +40,12 @@ function ResetPasswordContent() {
         body: JSON.stringify({ token, new_password: newPassword }),
       });
 
-      const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload.message || 'Failed to reset password');
+        if (response.status === 429) {
+          throw new Error('Too many requests. Please wait a few minutes and try again.');
+        }
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message || 'Failed to reset password');
       }
 
       setSuccess(true);
