@@ -125,6 +125,7 @@ def webhook():
                 media_id = None
                 mime_type = None
                 
+                filename = None
                 if msg_type == 'text':
                     text_body = message.get('text', {}).get('body')
                 else:
@@ -132,12 +133,13 @@ def webhook():
                     media_id = media_obj.get('id')
                     mime_type = media_obj.get('mime_type')
                     text_body = media_obj.get('caption', '')
+                    filename = media_obj.get('filename')
 
                 from app.services.whatsapp_service import WhatsAppService
                 try:
                     WhatsAppService.process_incoming_message(
                         phone=phone, name=name, text=text_body, meta_message_id=meta_message_id,
-                        media_id=media_id, mime_type=mime_type, msg_type=msg_type
+                        media_id=media_id, mime_type=mime_type, msg_type=msg_type, filename=filename
                     )
                 except Exception:
                     # Meta retries on anything but 200, which would hammer us with the same

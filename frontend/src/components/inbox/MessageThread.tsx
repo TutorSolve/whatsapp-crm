@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { MessageSquare, Send, AlertCircle, ChevronLeft, Paperclip, X, Zap, CheckCheck, FileText, Ban } from 'lucide-react';
+import { MessageSquare, Send, AlertCircle, ChevronLeft, Paperclip, X, Zap, CheckCheck, FileText, Ban, Download, ExternalLink } from 'lucide-react';
 import { API_URL } from '@/lib/config';
 import Linkify from '@/components/ui/Linkify';
 import MessageStatusTicks from '@/components/inbox/MessageStatusTicks';
@@ -78,6 +78,29 @@ const ATTACHMENT_ACCEPT = [
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'application/zip', 'text/plain', 'text/csv'
 ].join(',');
+
+function getFileBadgeInfo(fileName?: string | null, mimeType?: string | null) {
+  const ext = (fileName?.split('.').pop() || '').toLowerCase();
+  if (ext === 'pdf' || mimeType?.includes('pdf')) {
+    return { label: 'PDF', color: 'bg-red-500/15 text-red-700 dark:text-red-300 border-red-300/40' };
+  }
+  if (['xls', 'xlsx', 'csv'].includes(ext) || mimeType?.includes('spreadsheet') || mimeType?.includes('excel') || mimeType?.includes('csv')) {
+    return { label: ext ? ext.toUpperCase() : 'XLS', color: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-300/40' };
+  }
+  if (['doc', 'docx'].includes(ext) || mimeType?.includes('word')) {
+    return { label: ext ? ext.toUpperCase() : 'DOC', color: 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-300/40' };
+  }
+  if (['ppt', 'pptx'].includes(ext) || mimeType?.includes('presentation') || mimeType?.includes('powerpoint')) {
+    return { label: ext ? ext.toUpperCase() : 'PPT', color: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-300/40' };
+  }
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext) || mimeType?.includes('zip') || mimeType?.includes('compressed')) {
+    return { label: ext ? ext.toUpperCase() : 'ZIP', color: 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-300/40' };
+  }
+  if (['txt', 'rtf'].includes(ext) || mimeType?.includes('text')) {
+    return { label: ext ? ext.toUpperCase() : 'TXT', color: 'bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-300/40' };
+  }
+  return { label: ext ? ext.toUpperCase().slice(0, 4) : 'FILE', color: 'bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-300/40' };
+}
 
 export default function MessageThread({ conversationId, conversation, newMessage, messageStatusUpdate, onBack, isNoteMode: controlledNoteMode, onNoteModeChange }: MessageThreadProps) {
   const { markAsRead } = useInbox();
@@ -510,26 +533,91 @@ export default function MessageThread({ conversationId, conversation, newMessage
                             <span>🤖 System Auto-Reply</span>
                           </div>
                         )}
-                        <p className={`text-sm whitespace-pre-wrap ${isNote ? 'italic' : ''}`}>
-                          {msg.text_body && <Linkify text={msg.text_body} isOnColoredBackground={isAgentOrSystem} />}
-                        </p>
+                        {(() => {
+                          const isDoc = msg.message_type === 'DOCUMENT' || (!['IMAGE', 'VIDEO', 'AUDIO', 'VOICE'].includes(msg.message_type || '') && Boolean(msg.media_url));
+                          const isAudio = msg.message_type === 'AUDIO' || msg.message_type === 'VOICE';
+                          const displayFileName = msg.media_filename || (isDoc && msg.text_body && /\.[a-z0-9]{2,4}$/i.test(msg.text_body.trim()) ? msg.text_body.trim() : null) || 'Attachment';
+                          const showTextBody = msg.text_body && (!isDoc || msg.text_body.trim().toLowerCase() !== displayFileName.trim().toLowerCase());
 
-                        {msg.media_url && msg.message_type === 'IMAGE' && (
-                          <img 
-                            src={`${API_URL}${msg.media_url}`} 
-                            alt="Media" 
-                            className="mt-2 rounded-lg max-w-full max-h-64 object-contain shadow-sm border border-black/5 cursor-pointer hover:opacity-90 transition-opacity" 
-                            onClick={() => setMaximizedImage(`${API_URL}${msg.media_url}`)}
-                          />
-                        )}
-                        {msg.media_url && msg.message_type === 'VIDEO' && (
-                          <video src={`${API_URL}${msg.media_url}`} controls className="mt-2 rounded-lg max-w-full max-h-64 shadow-sm border border-black/5" />
-                        )}
-                        {msg.media_url && (msg.message_type === 'DOCUMENT' || msg.message_type === 'AUDIO' || msg.message_type === 'VOICE') && (
-                          <a href={`${API_URL}${msg.media_url}`} target="_blank" rel="noopener noreferrer" className={`mt-2 text-xs font-semibold underline flex items-center gap-1 p-2 rounded ${isAgentOrSystem ? 'bg-emerald-600/30 text-white' : 'bg-blue-50 text-blue-600'}`}>
-                            <Paperclip size={14} /> View Attachment
-                          </a>
-                        )}
+                          return (
+                            <>
+                              {showTextBody && (
+                                <p className={`text-sm whitespace-pre-wrap ${isNote ? 'italic' : ''}`}>
+                                  <Linkify text={msg.text_body!} isOnColoredBackground={isAgentOrSystem} />
+                                </p>
+                              )}
+
+                              {msg.media_url && msg.message_type === 'IMAGE' && (
+                                <img 
+                                  src={`${API_URL}${msg.media_url}`} 
+                                  alt="Media" 
+                                  className="mt-2 rounded-lg max-w-full max-h-64 object-contain shadow-sm border border-black/5 cursor-pointer hover:opacity-90 transition-opacity" 
+                                  onClick={() => setMaximizedImage(`${API_URL}${msg.media_url}`)}
+                                />
+                              )}
+                              {msg.media_url && msg.message_type === 'VIDEO' && (
+                                <video src={`${API_URL}${msg.media_url}`} controls className="mt-2 rounded-lg max-w-full max-h-64 shadow-sm border border-black/5" />
+                              )}
+                              {msg.media_url && isAudio && (
+                                <div className="mt-2">
+                                  <audio controls src={`${API_URL}${msg.media_url}`} className="max-w-full h-8" />
+                                </div>
+                              )}
+                              {msg.media_url && isDoc && (() => {
+                                const badge = getFileBadgeInfo(displayFileName, msg.media_mime_type);
+                                const isPdf = badge.label === 'PDF';
+                                const downloadUrl = `${API_URL}${msg.media_url}?filename=${encodeURIComponent(displayFileName)}&download=1`;
+                                const viewUrl = `${API_URL}${msg.media_url}?filename=${encodeURIComponent(displayFileName)}`;
+
+                                return (
+                                  <div className={`mt-2 rounded-lg p-2.5 flex flex-col gap-2 border ${
+                                    isAgentOrSystem 
+                                      ? 'bg-black/15 border-white/20 text-white' 
+                                      : 'bg-gray-50/90 border-gray-200 text-gray-800'
+                                  }`}>
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase border shrink-0 ${
+                                        isAgentOrSystem ? 'bg-white/20 text-white border-white/30' : badge.color
+                                      }`}>
+                                        {badge.label}
+                                      </span>
+                                      <span className="text-xs font-medium truncate flex-1" title={displayFileName}>
+                                        {displayFileName}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 pt-1 border-t border-black/5">
+                                      {isPdf && (
+                                        <a
+                                          href={viewUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className={`text-xs font-semibold px-2 py-1 rounded inline-flex items-center gap-1 transition-colors ${
+                                            isAgentOrSystem
+                                              ? 'bg-white/20 hover:bg-white/30 text-white'
+                                              : 'bg-gray-200/80 hover:bg-gray-300 text-gray-700'
+                                          }`}
+                                        >
+                                          <ExternalLink size={12} /> View
+                                        </a>
+                                      )}
+                                      <a
+                                        href={downloadUrl}
+                                        download={displayFileName}
+                                        className={`text-xs font-semibold px-2.5 py-1 rounded inline-flex items-center gap-1 transition-colors ${
+                                          isAgentOrSystem
+                                            ? 'bg-white text-emerald-800 hover:bg-emerald-50 shadow-sm'
+                                            : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                                        }`}
+                                      >
+                                        <Download size={12} /> Download
+                                      </a>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </>
+                          );
+                        })()}
 
                         <div className={`text-[10px] mt-1 flex items-center justify-end gap-1 ${isNote ? 'text-yellow-600' : isAgentOrSystem ? 'text-emerald-100' : 'text-[var(--color-text-muted)]'}`}>
                           {isNote && (

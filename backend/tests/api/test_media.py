@@ -47,3 +47,52 @@ def test_proxy_media_does_not_leak_raw_meta_error_body(client, agent_token, mock
     body = response.get_json()
     assert body["status"] == "error"
     assert "super-secret-detail" not in body["message"]
+
+def test_proxy_media_sets_content_disposition_when_download_requested(client, agent_token, mocker, monkeypatch):
+    monkeypatch.setattr("app.api.media.WHATSAPP_ACCESS_TOKEN", "fake_token")
+    client.set_cookie("access_token", agent_token)
+
+    meta_info_resp = mocker.Mock(status_code=200)
+    meta_info_resp.json.return_value = {
+        "url": "https://lookaside.fbsbx.com/fake_download_url",
+        "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    }
+    meta_info_resp.raise_for_status.return_value = None
+
+    download_resp = mocker.Mock(status_code=200)
+    download_resp.iter_content.return_value = [b"fake-excel-data"]
+    download_resp.raise_for_status.return_value = None
+
+    mocker.patch("requests.get", side_effect=[meta_info_resp, download_resp])
+
+    response = client.get('/api/media/1234567890?filename=Assignment_Devanshu.xlsx&download=1')
+    assert response.status_code == 200
+    assert response.data == b"fake-excel-data"
+    cd = response.headers.get("Content-Disposition")
+    assert cd is not None
+    assert "attachment" in cd
+    assert "Assignment_Devanshu.xlsx" in cd
+
+def test_proxy_media_sanitizes_filename_against_header_injection(client, agent_token, mocker, monkeypatch):
+    monkeypatch.setattr("app.api.media.WHATSAPP_ACCESS_TOKEN", "fake_token")
+    client.set_cookie("access_token", agent_token)
+
+    meta_info_resp = mocker.Mock(status_code=200)
+    meta_info_resp.json.return_value = {
+        "url": "https://lookaside.fbsbx.com/fake_download_url",
+        "mime_type": "application/pdf"
+    }
+    meta_info_resp.raise_for_status.return_value = None
+
+    download_resp = mocker.Mock(status_code=200)
+    download_resp.iter_content.return_value = [b"fake-pdf-data"]
+    download_resp.raise_for_status.return_value = None
+
+    mocker.patch("requests.get", side_effect=[meta_info_resp, download_resp])
+
+    response = client.get('/api/media/1234567890?filename=test%0d%0aInjected-Header:bad.pdf&download=1')
+    assert response.status_code == 200
+    cd = response.headers.get("Content-Disposition")
+    assert "\r" not in cd
+    assert "\n" not in cd
+    assert "Injected-Header" not in response.headers

@@ -21,6 +21,7 @@ class Message:
     text_body: Optional[str] = None
     media_url: Optional[str] = None
     media_mime_type: Optional[str] = None
+    media_filename: Optional[str] = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
@@ -34,6 +35,7 @@ class Message:
             "text_body": self.text_body,
             "media_url": self.media_url,
             "media_mime_type": self.media_mime_type,
+            "media_filename": self.media_filename,
             "direction": self.direction,
             "delivery_status": self.delivery_status,
             "timestamp": self.timestamp

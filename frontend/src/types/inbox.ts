@@ -22,6 +22,7 @@ export interface Message {
   text_body: string | null;
   media_url?: string | null;
   media_mime_type?: string | null;
+  media_filename?: string | null;
   delivery_status: string;
   timestamp: string;
   sender_name?: string | null;

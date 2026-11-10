@@ -1,7 +1,9 @@
 import logging
+import os
 import re
+import urllib.parse
 import requests
-from flask import Blueprint, jsonify, Response, stream_with_context
+from flask import Blueprint, jsonify, Response, stream_with_context, request
 from app.core.auth_middleware import require_role
 from app.core.config import WHATSAPP_ACCESS_TOKEN
 
@@ -13,6 +15,18 @@ bp = Blueprint('media', __name__, url_prefix='/api/media')
 # else here means we never forward attacker-controlled input into a URL we
 # call with our own access token.
 MEDIA_ID_PATTERN = re.compile(r"^\d+$")
+
+def _format_content_disposition(filename: str | None, force_download: bool, fallback_id: str) -> str | None:
+    if not filename and not force_download:
+        return None
+    raw_name = filename.strip() if filename else f"media_{fallback_id}"
+    raw_name = os.path.basename(raw_name).replace("\r", "").replace("\n", "").replace('"', '').strip()
+    if not raw_name:
+        raw_name = f"media_{fallback_id}"
+    safe_ascii = re.sub(r'[^\w\.\-\ ]', '_', raw_name).strip() or f"media_{fallback_id}"
+    encoded = urllib.parse.quote(raw_name, safe='')
+    disposition = "attachment" if force_download else "inline"
+    return f'{disposition}; filename="{safe_ascii}"; filename*=UTF-8\'\'{encoded}'
 
 @bp.route('/<media_id>', methods=['GET'])
 @require_role('ADMIN', 'MANAGER', 'AGENT')
@@ -56,6 +70,9 @@ def proxy_media(media_id):
 
     # Step 2: Stream the binary data from Meta to the frontend
     try:
+        req_filename = request.args.get('filename')
+        force_download = request.args.get('download', '').lower() in ('1', 'true', 'yes')
+
         # stream=True ensures we don't load huge files into RAM
         media_resp = requests.get(download_url, headers=headers, stream=True, timeout=30)
         media_resp.raise_for_status()
@@ -65,7 +82,11 @@ def proxy_media(media_id):
                 if chunk:
                     yield chunk
 
-        return Response(stream_with_context(generate()), content_type=mime_type)
+        resp = Response(stream_with_context(generate()), content_type=mime_type)
+        cd = _format_content_disposition(req_filename, force_download, media_id)
+        if cd:
+            resp.headers["Content-Disposition"] = cd
+        return resp
 
     except requests.exceptions.RequestException as e:
         status = getattr(e.response, "status_code", 500)

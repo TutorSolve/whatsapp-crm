@@ -297,7 +297,8 @@ class WhatsAppService:
     @staticmethod
     def process_incoming_message(
         phone: str, name: str, text: str | None, meta_message_id: str | None = None,
-        media_id: str | None = None, mime_type: str | None = None, msg_type: str = 'text'
+        media_id: str | None = None, mime_type: str | None = None, msg_type: str = 'text',
+        filename: str | None = None
     ) -> None:
         if not phone or not isinstance(phone, str) or not phone.strip():
             raise ValueError("Phone number is required")
@@ -442,6 +443,7 @@ class WhatsAppService:
             text_body=text,
             media_url=media_url,
             media_mime_type=mime_type,
+            media_filename=filename,
             direction="INBOUND",
             delivery_status="DELIVERED"
         )
@@ -466,9 +468,10 @@ class WhatsAppService:
             'conversation_id': conversation_id,
             'message': {
                 'id': message.id,
-                'text_body': text,
+                'text_body': message.text_body,
                 'media_url': media_url,
                 'media_mime_type': mime_type,
+                'media_filename': filename,
                 'direction': 'INBOUND',
                 'sender_type': 'CUSTOMER',
                 'message_type': message_type,
@@ -690,6 +693,7 @@ class WhatsAppService:
                 text_body=text,
                 media_url=media_url,
                 media_mime_type=canonical_mime,
+                media_filename=filename,
                 direction="OUTBOUND",
                 delivery_status="SENT"
             )
@@ -714,6 +718,7 @@ class WhatsAppService:
                     'text_body': text,
                     'media_url': media_url,
                     'media_mime_type': canonical_mime,
+                    'media_filename': filename,
                     'direction': 'OUTBOUND',
                     'sender_type': 'AGENT',
                     'message_type': msg_type.upper(),

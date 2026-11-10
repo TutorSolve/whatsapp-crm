@@ -116,6 +116,7 @@ def get_messages(conversation_id):
             "text_body": msg.get("text_body"),
             "media_url": msg.get("media_url"),
             "media_mime_type": msg.get("media_mime_type"),
+            "media_filename": msg.get("media_filename"),
             "delivery_status": msg.get("delivery_status"),
             "timestamp": ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
             "sender_name": sender_name
@@ -194,6 +195,7 @@ def send_message(conversation_id):
             "text_body": msg.get("text_body"),
             "media_url": msg.get("media_url"),
             "media_mime_type": msg.get("media_mime_type"),
+            "media_filename": msg.get("media_filename"),
             "delivery_status": msg.get("delivery_status"),
             "timestamp": ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
         }

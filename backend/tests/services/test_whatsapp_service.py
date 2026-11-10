@@ -741,3 +741,65 @@ def test_send_media_message_supports_pptx_and_normalizes_mime(app, mock_db_clien
     upload_data = upload_call[1]["data"]
     assert upload_data["type"] == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
+
+def test_process_incoming_document_stores_original_filename(app, mock_db_client, mocker):
+    mock_emit = mocker.patch("app.core.socket_events.socketio.emit")
+    WhatsAppService.process_incoming_message(
+        phone="16505559099", name="Doc Sender", text="",
+        meta_message_id="wamid.doc99", media_id="987654321",
+        mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        msg_type="document", filename="Student_Grades.xlsx"
+    )
+
+    messages = [m.to_dict() for m in mock_db_client.collection("messages").stream()]
+    doc_msg = next((m for m in messages if m.get("meta_message_id") == "wamid.doc99"), None)
+    assert doc_msg is not None
+    assert doc_msg.get("media_filename") == "Student_Grades.xlsx"
+    assert doc_msg.get("media_mime_type") == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    mock_emit.assert_called()
+    called_payload = mock_emit.call_args[0][1]
+    assert called_payload["message"]["media_filename"] == "Student_Grades.xlsx"
+
+
+def test_send_media_message_stores_original_filename(app, mock_db_client, mocker, monkeypatch):
+    monkeypatch.setattr("app.services.whatsapp_service.WHATSAPP_ACCESS_TOKEN", "fake_token")
+    monkeypatch.setattr("app.services.whatsapp_service.WHATSAPP_PHONE_NUMBER_ID", "12345")
+    mock_emit = mocker.patch("app.core.socket_events.socketio.emit")
+
+    upload_response = mocker.Mock(status_code=200)
+    upload_response.json.return_value = {"id": "111222333"}
+    upload_response.raise_for_status.return_value = None
+
+    send_response = mocker.Mock(status_code=200)
+    send_response.json.return_value = {"messages": [{"id": "wamid.outbound.doc"}]}
+    send_response.raise_for_status.return_value = None
+
+    mocker.patch("requests.post", side_effect=[upload_response, send_response])
+
+    customer = Customer(phone_hash=hash_phone("9999"), real_phone_number_encrypted=encrypt_phone("9999"), masked_id="L-out-doc")
+    mock_db_client.collection("customers").document(customer.id).set(customer.to_dict())
+    conversation = Conversation(customer_id=customer.id)
+    mock_db_client.collection("conversations").document(conversation.id).set(conversation.to_dict())
+
+    success, error = WhatsAppService.send_media_message(
+        conversation_id=conversation.id,
+        file_bytes=b"fake-powerpoint-bytes",
+        mime_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        filename="Lecture_Slides.pptx",
+        text="Review these slides",
+        sender_id="agent-1"
+    )
+
+    assert isinstance(success, dict), error
+    assert success.get("media_filename") == "Lecture_Slides.pptx"
+
+    messages = [m.to_dict() for m in mock_db_client.collection("messages").stream()]
+    out_msg = next((m for m in messages if m.get("media_filename") == "Lecture_Slides.pptx"), None)
+    assert out_msg is not None
+
+    mock_emit.assert_called()
+    called_payload = mock_emit.call_args[0][1]
+    assert called_payload["message"]["media_filename"] == "Lecture_Slides.pptx"
+
+
