@@ -39,6 +39,88 @@ def _build_message_preview(text: str | None, message_type: str) -> str:
         return text[:50]
     return MESSAGE_PREVIEW_LABELS.get(message_type, message_type.title())
 
+SUPPORTED_MEDIA_MIME_TYPES = {
+    # Documents & Office
+    '.pdf': 'application/pdf',
+    '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xls': 'application/vnd.ms-excel',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.csv': 'text/csv',
+    '.ppt': 'application/vnd.ms-powerpoint',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.txt': 'text/plain',
+    '.rtf': 'application/rtf',
+    '.zip': 'application/zip',
+    # Images
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    # Audio
+    '.mp3': 'audio/mpeg',
+    '.m4a': 'audio/mp4',
+    '.aac': 'audio/aac',
+    '.amr': 'audio/amr',
+    '.ogg': 'audio/ogg',
+    '.wav': 'audio/wav',
+    # Video
+    '.mp4': 'video/mp4',
+    '.3gp': 'video/3gp',
+}
+
+FORBIDDEN_FILE_EXTENSIONS = {
+    '.exe', '.apk', '.bat', '.cmd', '.msi', '.dmg', '.sh', '.vbs', '.bin', '.com', '.scr', '.pif'
+}
+
+MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024       # 5 MB (Meta limit)
+MAX_MEDIA_SIZE_BYTES = 16 * 1024 * 1024      # 16 MB (video / audio)
+MAX_DOCUMENT_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB (documents / zip)
+
+def _normalize_media_payload(filename: str, incoming_mime: str | None, file_bytes: bytes) -> tuple[str, str, str | None]:
+    """
+    Normalizes filename, mime_type, and message type for Meta WhatsApp Cloud API.
+    Returns: (canonical_mime_type, msg_type, error_message)
+    where msg_type is 'image', 'video', 'audio', or 'document'.
+    """
+    import os
+    ext = os.path.splitext(filename or "")[1].lower()
+
+    if ext in FORBIDDEN_FILE_EXTENSIONS:
+        return "", "", "WhatsApp does not permit sending executable files (.exe, .apk) for security. Please share a cloud link instead."
+
+    mime = (incoming_mime or "").strip().lower()
+    if mime in ("image/jpg", "image/pjpeg"):
+        mime = "image/jpeg"
+
+    if ext in SUPPORTED_MEDIA_MIME_TYPES:
+        canonical_mime = SUPPORTED_MEDIA_MIME_TYPES[ext]
+    elif mime and mime != "application/octet-stream":
+        canonical_mime = mime
+    else:
+        canonical_mime = "application/octet-stream"
+
+    if canonical_mime.startswith("image/"):
+        msg_type = "image"
+        if canonical_mime not in ("image/jpeg", "image/png"):
+            return "", "", "WhatsApp only supports JPEG (.jpg, .jpeg) and PNG (.png) images."
+        if len(file_bytes) > MAX_IMAGE_SIZE_BYTES:
+            size_mb = round(len(file_bytes) / (1024 * 1024), 1)
+            return "", "", f"Images on WhatsApp cannot exceed 5MB. This file is {size_mb}MB. Please compress it or send as a document."
+    elif canonical_mime.startswith("video/"):
+        msg_type = "video"
+        if len(file_bytes) > MAX_MEDIA_SIZE_BYTES:
+            return "", "", "Videos on WhatsApp cannot exceed 16MB."
+    elif canonical_mime.startswith("audio/"):
+        msg_type = "audio"
+        if len(file_bytes) > MAX_MEDIA_SIZE_BYTES:
+            return "", "", "Audio files on WhatsApp cannot exceed 16MB."
+    else:
+        msg_type = "document"
+        if len(file_bytes) > MAX_DOCUMENT_SIZE_BYTES:
+            return "", "", "Documents on WhatsApp cannot exceed 100MB."
+
+    return canonical_mime, msg_type, None
+
 DEFAULT_GREETING_MESSAGE = "Hi there! Welcome. An agent will be with you shortly."
 BUSINESS_SETTINGS_DOC_ID = "global_config"
 
@@ -541,16 +623,21 @@ class WhatsAppService:
         except ValueError as e:
             return False, str(e)
 
+        # Step 0: Validate & normalize media
+        canonical_mime, msg_type, norm_err = _normalize_media_payload(filename, mime_type, file_bytes)
+        if norm_err:
+            return False, norm_err
+
         # Step 1: Upload media to Meta
         upload_url = f"https://graph.facebook.com/v25.0/{WHATSAPP_PHONE_NUMBER_ID}/media"
         headers = {"Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}"}
         
         files = {
-            "file": (filename, file_bytes, mime_type)
+            "file": (filename, file_bytes, canonical_mime)
         }
         data = {
             "messaging_product": "whatsapp",
-            "type": mime_type
+            "type": canonical_mime
         }
 
         try:
@@ -563,16 +650,6 @@ class WhatsAppService:
             logger.warning("Meta media upload failed with HTTP %s: %s", status, body)
             err_msg = _extract_meta_error(e)
             return False, f"Failed to upload media: {err_msg}"
-
-        # Determine WhatsApp msg type based on mime type
-        if mime_type.startswith("image/"):
-            msg_type = "image"
-        elif mime_type.startswith("video/"):
-            msg_type = "video"
-        elif mime_type.startswith("audio/"):
-            msg_type = "audio"
-        else:
-            msg_type = "document"
 
         # Step 2: Send message with media id
         send_url = f"https://graph.facebook.com/v25.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
@@ -612,7 +689,7 @@ class WhatsAppService:
                 message_type=msg_type.upper(),
                 text_body=text,
                 media_url=media_url,
-                media_mime_type=mime_type,
+                media_mime_type=canonical_mime,
                 direction="OUTBOUND",
                 delivery_status="SENT"
             )
@@ -636,7 +713,7 @@ class WhatsAppService:
                     'id': outbound_msg.id,
                     'text_body': text,
                     'media_url': media_url,
-                    'media_mime_type': mime_type,
+                    'media_mime_type': canonical_mime,
                     'direction': 'OUTBOUND',
                     'sender_type': 'AGENT',
                     'message_type': msg_type.upper(),

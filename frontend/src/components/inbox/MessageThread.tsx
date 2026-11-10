@@ -30,24 +30,54 @@ function formatTimeRemaining(msRemaining: number): string {
   return hours > 0 ? `${hours}h ${minutes}m left` : `${minutes}m left`;
 }
 
-// Mirrors the server-side cap (MAX_UPLOAD_SIZE_BYTES in backend/app/core/config.py) so
-// oversized files are rejected instantly instead of round-tripping to the server first.
-const MAX_ATTACHMENT_SIZE_BYTES = 16 * 1024 * 1024;
-const ALLOWED_ATTACHMENT_MIME_PREFIXES = ['image/', 'video/', 'audio/'];
-const ALLOWED_DOCUMENT_MIME_TYPES = [
+// File size caps matching Meta WhatsApp Cloud API specifications
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;       // 5 MB for images
+const MAX_MEDIA_SIZE_BYTES = 16 * 1024 * 1024;      // 16 MB for video/audio
+const MAX_DOCUMENT_SIZE_BYTES = 100 * 1024 * 1024;  // 100 MB for documents & archives
+
+// Strictly blocked dangerous executable files
+const FORBIDDEN_EXTENSIONS = new Set([
+  '.exe', '.apk', '.bat', '.cmd', '.msi', '.dmg', '.sh', '.vbs', '.bin', '.com', '.scr', '.pif'
+]);
+
+// Whitelisted file extensions
+const ALLOWED_EXTENSIONS = new Set([
+  // Documents & Office
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv', '.ppt', '.pptx', '.txt', '.rtf', '.zip',
+  // Images
+  '.jpg', '.jpeg', '.png',
+  // Audio & Video
+  '.mp4', '.3gp', '.mp3', '.m4a', '.aac', '.amr', '.ogg', '.wav'
+]);
+
+const ALLOWED_MIME_PREFIXES = ['image/', 'video/', 'audio/'];
+const ALLOWED_DOCUMENT_MIME_TYPES = new Set([
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/rtf',
   'text/plain',
-];
-const ATTACHMENT_ACCEPT = [...ALLOWED_ATTACHMENT_MIME_PREFIXES.map(p => `${p}*`), ...ALLOWED_DOCUMENT_MIME_TYPES].join(',');
+  'text/csv',
+  'application/csv'
+]);
 
-function isAllowedAttachmentType(mimeType: string): boolean {
-  return ALLOWED_ATTACHMENT_MIME_PREFIXES.some(prefix => mimeType.startsWith(prefix))
-    || ALLOWED_DOCUMENT_MIME_TYPES.includes(mimeType);
-}
+const ATTACHMENT_ACCEPT = [
+  ...Array.from(ALLOWED_EXTENSIONS),
+  'image/jpeg', 'image/png', 'video/mp4', 'audio/*',
+  'application/pdf', 'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/zip', 'text/plain', 'text/csv'
+].join(',');
 
 export default function MessageThread({ conversationId, conversation, newMessage, messageStatusUpdate, onBack, isNoteMode: controlledNoteMode, onNoteModeChange }: MessageThreadProps) {
   const { markAsRead } = useInbox();
@@ -239,16 +269,54 @@ export default function MessageThread({ conversationId, conversation, newMessage
     setAttachment(null);
     if (!file) return;
 
-    if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
-      setAttachmentError(`"${file.name}" is too large. Max size is ${MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)}MB.`);
+    const extMatch = file.name.match(/\.[^.]+$/);
+    const ext = extMatch ? extMatch[0].toLowerCase() : '';
+
+    if (FORBIDDEN_EXTENSIONS.has(ext)) {
+      setAttachmentError('WhatsApp does not permit sending executable files (.exe, .apk) for security. Please share a cloud link instead.');
       e.target.value = '';
       return;
     }
-    if (!isAllowedAttachmentType(file.type)) {
-      setAttachmentError(`Unsupported file type: ${file.type || 'unknown'}.`);
+
+    const isImage = file.type.startsWith('image/') || ext === '.jpg' || ext === '.jpeg' || ext === '.png';
+    const isMedia = file.type.startsWith('video/') || file.type.startsWith('audio/') || ['.mp4', '.3gp', '.mp3', '.m4a', '.aac', '.ogg', '.wav'].includes(ext);
+
+    if (isImage) {
+      if (file.type && !['image/jpeg', 'image/png', 'image/jpg', 'image/pjpeg'].includes(file.type) && !['.jpg', '.jpeg', '.png'].includes(ext)) {
+        setAttachmentError('WhatsApp only supports JPG and PNG image files. Please convert or send as a document.');
+        e.target.value = '';
+        return;
+      }
+      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+        setAttachmentError(`Image is too large (${sizeMb}MB). WhatsApp allows images up to 5MB.`);
+        e.target.value = '';
+        return;
+      }
+    } else if (isMedia) {
+      if (file.size > MAX_MEDIA_SIZE_BYTES) {
+        setAttachmentError(`Media file is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Max size is 16MB.`);
+        e.target.value = '';
+        return;
+      }
+    } else {
+      if (file.size > MAX_DOCUMENT_SIZE_BYTES) {
+        setAttachmentError(`File is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Max document size is 100MB.`);
+        e.target.value = '';
+        return;
+      }
+    }
+
+    const isSupported = ALLOWED_EXTENSIONS.has(ext)
+      || ALLOWED_MIME_PREFIXES.some(prefix => file.type.startsWith(prefix))
+      || ALLOWED_DOCUMENT_MIME_TYPES.has(file.type);
+
+    if (!isSupported) {
+      setAttachmentError(`Unsupported file format "${ext || file.type}". Supported: PDF, Word, Excel, PPT, CSV, ZIP, TXT, images, audio & video.`);
       e.target.value = '';
       return;
     }
+
     setAttachment(file);
   };
 

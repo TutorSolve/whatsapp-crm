@@ -658,3 +658,86 @@ def test_block_and_unblock_customer(app, mock_db_client, mocker):
     assert cust_after_unblock["is_blocked"] is False
     assert conv_after_unblock["status"] == "OPEN"
     assert conv_after_unblock["is_blocked"] is False
+
+def test_normalize_media_payload_for_various_formats():
+    from app.services.whatsapp_service import _normalize_media_payload
+
+    # PowerPoint
+    mime, msg_type, err = _normalize_media_payload("presentation.pptx", "application/octet-stream", b"pptx-data")
+    assert err is None
+    assert mime == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    assert msg_type == "document"
+
+    # Excel
+    mime, msg_type, err = _normalize_media_payload("sheet.xlsx", "", b"xlsx-data")
+    assert err is None
+    assert mime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert msg_type == "document"
+
+    # CSV
+    mime, msg_type, err = _normalize_media_payload("data.csv", "text/csv", b"a,b,c")
+    assert err is None
+    assert mime == "text/csv"
+    assert msg_type == "document"
+
+    # ZIP archive
+    mime, msg_type, err = _normalize_media_payload("bundle.zip", "application/zip", b"zip-data")
+    assert err is None
+    assert mime == "application/zip"
+    assert msg_type == "document"
+
+    # JPEG image normalization from image/jpg
+    mime, msg_type, err = _normalize_media_payload("photo.jpg", "image/jpg", b"jpg-data")
+    assert err is None
+    assert mime == "image/jpeg"
+    assert msg_type == "image"
+
+    # Block executable
+    _, _, err = _normalize_media_payload("malware.exe", "application/x-msdownload", b"exe-data")
+    assert err is not None
+    assert "executable" in err.lower()
+
+    # Reject oversized image (> 5MB)
+    oversized = b"0" * (6 * 1024 * 1024)
+    _, _, err = _normalize_media_payload("large.jpg", "image/jpeg", oversized)
+    assert err is not None
+    assert "5mb" in err.lower()
+
+def test_send_media_message_supports_pptx_and_normalizes_mime(app, mock_db_client, mocker, monkeypatch):
+    monkeypatch.setattr("app.services.whatsapp_service.WHATSAPP_ACCESS_TOKEN", "fake_token")
+    monkeypatch.setattr("app.services.whatsapp_service.WHATSAPP_PHONE_NUMBER_ID", "12345")
+
+    upload_response = mocker.Mock(status_code=200)
+    upload_response.json.return_value = {"id": "media-pptx-999"}
+    upload_response.raise_for_status.return_value = None
+
+    send_response = mocker.Mock(status_code=200)
+    send_response.json.return_value = {"messages": [{"id": "wamid.pptx1"}]}
+    send_response.raise_for_status.return_value = None
+
+    post_mock = mocker.patch("requests.post", side_effect=[upload_response, send_response])
+
+    customer = Customer(phone_hash=hash_phone("888"), real_phone_number_encrypted=encrypt_phone("888"), masked_id="L-pptx")
+    mock_db_client.collection("customers").document(customer.id).set(customer.to_dict())
+    conversation = Conversation(customer_id=customer.id)
+    mock_db_client.collection("conversations").document(conversation.id).set(conversation.to_dict())
+
+    # Send a PowerPoint file where browser sent empty or octet-stream MIME
+    success, error = WhatsAppService.send_media_message(
+        conversation_id=conversation.id,
+        file_bytes=b"powerpoint-content",
+        mime_type="application/octet-stream",
+        filename="lecture.pptx",
+        text="Check this lecture",
+        sender_id="agent-1"
+    )
+
+    assert isinstance(success, dict), error
+    assert success["message_type"] == "DOCUMENT"
+    assert success["media_mime_type"] == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
+    # Verify Meta upload request received canonical MIME type
+    upload_call = post_mock.call_args_list[0]
+    upload_data = upload_call[1]["data"]
+    assert upload_data["type"] == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
