@@ -40,41 +40,45 @@ def _build_message_preview(text: str | None, message_type: str) -> str:
     return MESSAGE_PREVIEW_LABELS.get(message_type, message_type.title())
 
 SUPPORTED_MEDIA_MIME_TYPES = {
-    # Documents & Office
+    # Documents & Office (Whitelisted by Meta WhatsApp Cloud API)
     '.pdf': 'application/pdf',
     '.doc': 'application/msword',
     '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     '.xls': 'application/vnd.ms-excel',
     '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    '.csv': 'text/csv',
+    '.csv': 'text/plain',  # Meta rejects 'text/csv' with (#100). Plain text MIME delivers CSV cleanly with original filename
     '.ppt': 'application/vnd.ms-powerpoint',
     '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     '.txt': 'text/plain',
-    '.rtf': 'application/rtf',
-    '.zip': 'application/zip',
+    '.rtf': 'text/plain',
     # Images
     '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg',
     '.png': 'image/png',
+    '.webp': 'image/webp',
     # Audio
     '.mp3': 'audio/mpeg',
     '.m4a': 'audio/mp4',
     '.aac': 'audio/aac',
     '.amr': 'audio/amr',
     '.ogg': 'audio/ogg',
-    '.wav': 'audio/wav',
+    '.opus': 'audio/opus',
     # Video
     '.mp4': 'video/mp4',
-    '.3gp': 'video/3gp',
+    '.3gp': 'video/3gpp',
 }
 
 FORBIDDEN_FILE_EXTENSIONS = {
     '.exe', '.apk', '.bat', '.cmd', '.msi', '.dmg', '.sh', '.vbs', '.bin', '.com', '.scr', '.pif'
 }
 
+ARCHIVE_FILE_EXTENSIONS = {
+    '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.7zip', '.tgz', '.xz', '.z'
+}
+
 MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024       # 5 MB (Meta limit)
 MAX_MEDIA_SIZE_BYTES = 16 * 1024 * 1024      # 16 MB (video / audio)
-MAX_DOCUMENT_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB (documents / zip)
+MAX_DOCUMENT_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB (documents)
 
 def _normalize_media_payload(filename: str, incoming_mime: str | None, file_bytes: bytes) -> tuple[str, str, str | None]:
     """
@@ -87,6 +91,9 @@ def _normalize_media_payload(filename: str, incoming_mime: str | None, file_byte
 
     if ext in FORBIDDEN_FILE_EXTENSIONS:
         return "", "", "WhatsApp does not permit sending executable files (.exe, .apk) for security. Please share a cloud link instead."
+
+    if ext in ARCHIVE_FILE_EXTENSIONS or (incoming_mime and any(k in incoming_mime for k in ('zip', 'compressed', 'archive', 'tar', 'x-gzip', 'x-7z'))):
+        return "", "", "WhatsApp Cloud API does not support sending .zip or archive files. Please share files individually (.pdf, .docx, .xlsx, .pptx) or send a Google Drive / OneDrive cloud link."
 
     mime = (incoming_mime or "").strip().lower()
     if mime in ("image/jpg", "image/pjpeg"):
@@ -118,6 +125,8 @@ def _normalize_media_payload(filename: str, incoming_mime: str | None, file_byte
         msg_type = "document"
         if len(file_bytes) > MAX_DOCUMENT_SIZE_BYTES:
             return "", "", "Documents on WhatsApp cannot exceed 100MB."
+        if canonical_mime == "application/octet-stream":
+            return "", "", f"Unsupported document format '{ext or filename}'. WhatsApp Cloud API supports PDF, Word (.docx, .doc), Excel (.xlsx, .xls), PowerPoint (.pptx, .ppt), and Text (.txt, .csv)."
 
     return canonical_mime, msg_type, None
 
@@ -224,7 +233,10 @@ def _extract_meta_error(e: requests.exceptions.RequestException) -> str:
         try:
             err_json = e.response.json()
             if isinstance(err_json, dict) and "error" in err_json and "message" in err_json["error"]:
-                return f"{err_json['error']['message']} (HTTP {status})"
+                raw_msg = err_json['error']['message']
+                if "Param file must be a file with one of the following types" in raw_msg:
+                    return "This file format is not supported by Meta's WhatsApp Cloud API. Please send as PDF, Office document (.docx, .xlsx, .pptx), text file, or share a cloud link."
+                return f"{raw_msg} (HTTP {status})"
         except Exception:
             pass
     return f"Meta API returned HTTP {status}"

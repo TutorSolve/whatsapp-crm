@@ -33,21 +33,26 @@ function formatTimeRemaining(msRemaining: number): string {
 // File size caps matching Meta WhatsApp Cloud API specifications
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;       // 5 MB for images
 const MAX_MEDIA_SIZE_BYTES = 16 * 1024 * 1024;      // 16 MB for video/audio
-const MAX_DOCUMENT_SIZE_BYTES = 100 * 1024 * 1024;  // 100 MB for documents & archives
+const MAX_DOCUMENT_SIZE_BYTES = 100 * 1024 * 1024;  // 100 MB for documents
 
 // Strictly blocked dangerous executable files
 const FORBIDDEN_EXTENSIONS = new Set([
   '.exe', '.apk', '.bat', '.cmd', '.msi', '.dmg', '.sh', '.vbs', '.bin', '.com', '.scr', '.pif'
 ]);
 
-// Whitelisted file extensions
+// Archive files blocked by Meta WhatsApp Cloud API server
+const ARCHIVE_EXTENSIONS = new Set([
+  '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.7zip', '.tgz', '.xz'
+]);
+
+// Whitelisted file extensions supported by Meta WhatsApp Cloud API
 const ALLOWED_EXTENSIONS = new Set([
   // Documents & Office
-  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv', '.ppt', '.pptx', '.txt', '.rtf', '.zip',
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv', '.ppt', '.pptx', '.txt', '.rtf',
   // Images
   '.jpg', '.jpeg', '.png',
   // Audio & Video
-  '.mp4', '.3gp', '.mp3', '.m4a', '.aac', '.amr', '.ogg', '.wav'
+  '.mp4', '.3gp', '.mp3', '.m4a', '.aac', '.amr', '.ogg'
 ]);
 
 const ALLOWED_MIME_PREFIXES = ['image/', 'video/', 'audio/'];
@@ -59,9 +64,6 @@ const ALLOWED_DOCUMENT_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.ms-powerpoint',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'application/zip',
-  'application/x-zip-compressed',
-  'application/rtf',
   'text/plain',
   'text/csv',
   'application/csv'
@@ -76,7 +78,7 @@ const ATTACHMENT_ACCEPT = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.ms-powerpoint',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'application/zip', 'text/plain', 'text/csv'
+  'text/plain', 'text/csv'
 ].join(',');
 
 function getFileBadgeInfo(fileName?: string | null, mimeType?: string | null) {
@@ -301,6 +303,12 @@ export default function MessageThread({ conversationId, conversation, newMessage
       return;
     }
 
+    if (ARCHIVE_EXTENSIONS.has(ext) || file.type.includes('zip') || file.type.includes('compressed') || file.type.includes('archive') || file.type.includes('tar')) {
+      setAttachmentError('WhatsApp Cloud API does not support sending .zip or archive files. Please share the files individually (.pdf, .docx, .xlsx, .pptx) or send a Google Drive / OneDrive cloud link.');
+      e.target.value = '';
+      return;
+    }
+
     const isImage = file.type.startsWith('image/') || ext === '.jpg' || ext === '.jpeg' || ext === '.png';
     const isMedia = file.type.startsWith('video/') || file.type.startsWith('audio/') || ['.mp4', '.3gp', '.mp3', '.m4a', '.aac', '.ogg', '.wav'].includes(ext);
 
@@ -335,7 +343,7 @@ export default function MessageThread({ conversationId, conversation, newMessage
       || ALLOWED_DOCUMENT_MIME_TYPES.has(file.type);
 
     if (!isSupported) {
-      setAttachmentError(`Unsupported file format "${ext || file.type}". Supported: PDF, Word, Excel, PPT, CSV, ZIP, TXT, images, audio & video.`);
+      setAttachmentError(`Unsupported file format "${ext || file.type}". Supported: PDF, Word, Excel, PPT, CSV, TXT, images, audio & video.`);
       e.target.value = '';
       return;
     }

@@ -674,17 +674,22 @@ def test_normalize_media_payload_for_various_formats():
     assert mime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     assert msg_type == "document"
 
-    # CSV
+    # CSV (Mapped to text/plain because Meta Cloud API rejects 'text/csv' with HTTP 400 #100)
     mime, msg_type, err = _normalize_media_payload("data.csv", "text/csv", b"a,b,c")
     assert err is None
-    assert mime == "text/csv"
+    assert mime == "text/plain"
     assert msg_type == "document"
 
-    # ZIP archive
-    mime, msg_type, err = _normalize_media_payload("bundle.zip", "application/zip", b"zip-data")
-    assert err is None
-    assert mime == "application/zip"
-    assert msg_type == "document"
+    # ZIP archive (Rejected upfront with friendly message because Meta Cloud API forbids archives)
+    _, _, err = _normalize_media_payload("bundle.zip", "application/zip", b"zip-data")
+    assert err is not None
+    assert "zip" in err.lower()
+    assert "cloud link" in err.lower()
+
+    # RAR archive
+    _, _, err = _normalize_media_payload("project.rar", "application/x-rar-compressed", b"rar-data")
+    assert err is not None
+    assert "archive" in err.lower()
 
     # JPEG image normalization from image/jpg
     mime, msg_type, err = _normalize_media_payload("photo.jpg", "image/jpg", b"jpg-data")
@@ -801,5 +806,23 @@ def test_send_media_message_stores_original_filename(app, mock_db_client, mocker
     mock_emit.assert_called()
     called_payload = mock_emit.call_args[0][1]
     assert called_payload["message"]["media_filename"] == "Lecture_Slides.pptx"
+
+
+def test_extract_meta_error_handles_file_type_whitelist_rejection(mocker):
+    from app.services.whatsapp_service import _extract_meta_error
+    import requests
+
+    mock_resp = mocker.Mock()
+    mock_resp.status_code = 400
+    mock_resp.json.return_value = {
+        "error": {
+            "message": "(#100) Param file must be a file with one of the following types: audio/aac, audio/mp4, ... Received file of type 'application/zip'."
+        }
+    }
+    exc = requests.exceptions.HTTPError(response=mock_resp)
+    extracted = _extract_meta_error(exc)
+    assert "not supported" in extracted.lower()
+    assert "pdf" in extracted.lower()
+
 
 
